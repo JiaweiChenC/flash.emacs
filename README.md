@@ -17,6 +17,10 @@ Flash.nvim-like jump navigation for Emacs with full evil-mode support.
 
 ## Installation
 
+## demo 
+
+![emacs flash demo](flash-emacs-demo.gif)
+
 ### Manual Installation
 
 1. Download `flash-emacs.el` to your Emacs configuration directory
