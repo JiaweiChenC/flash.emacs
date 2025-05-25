@@ -36,9 +36,14 @@ Includes both lowercase and uppercase letters for more available labels."
   :type 'boolean
   :group 'flash-emacs)
 
-(defcustom flash-emacs-case-sensitive nil
-  "Whether search should be case sensitive."
-  :type 'boolean
+(defcustom flash-emacs-case-sensitive 'smart
+  "How to handle case sensitivity in search.
+- nil: always case-insensitive
+- t: always case-sensitive  
+- 'smart: case-insensitive if pattern is all lowercase, case-sensitive if it contains uppercase"
+  :type '(choice (const :tag "Always case-insensitive" nil)
+                 (const :tag "Always case-sensitive" t)
+                 (const :tag "Smart case (default)" smart))
   :group 'flash-emacs)
 
 (defcustom flash-emacs-min-pattern-length 1
@@ -65,22 +70,61 @@ Includes both lowercase and uppercase letters for more available labels."
 
 ;;; Search functions
 
-(defun flash-emacs--search-in-window (pattern window)
-  "Search for PATTERN in WINDOW and return list of matches."
-  (let ((matches '())
-        (case-fold-search (not flash-emacs-case-sensitive)))
+(defun flash-emacs--should-ignore-case (pattern)
+  "Determine if search should ignore case based on PATTERN and settings.
+Returns t if case should be ignored (case-insensitive search)."
+  (cond
+   ;; Always case-insensitive
+   ((eq flash-emacs-case-sensitive nil) t)
+   ;; Always case-sensitive
+   ((eq flash-emacs-case-sensitive t) nil)
+   ;; Smart case: ignore case if pattern is all lowercase
+   ((eq flash-emacs-case-sensitive 'smart)
+    (string= pattern (downcase pattern)))
+   ;; Default fallback
+   (t t)))
+
+(defun flash-emacs--get-window-bounds (window)
+  "Get the visible line bounds for WINDOW.
+Returns (start-line . end-line) where lines are 1-indexed."
+  (let ((start-pos (window-start window))
+        (end-pos (window-end window)))
     (with-current-buffer (window-buffer window)
       (save-excursion
-        (goto-char (point-min))
-        (while (search-forward pattern nil t)
-          (let ((match-start (match-beginning 0))
-                (match-end (match-end 0)))
-            (push (list :pos match-start
-                       :end-pos match-end
-                       :window window
-                       :buffer (current-buffer)
-                       :text (buffer-substring-no-properties match-start match-end))
-                  matches)))))
+        (goto-char start-pos)
+        (let ((start-line (line-number-at-pos)))
+          (goto-char end-pos)
+          (let ((end-line (line-number-at-pos)))
+            (cons start-line end-line)))))))
+
+(defun flash-emacs--search-in-window (pattern window)
+  "Search for PATTERN in WINDOW and return list of matches.
+Only searches within the visible area of the window."
+  (let ((matches '())
+        (case-fold-search (flash-emacs--should-ignore-case pattern)))
+    (with-current-buffer (window-buffer window)
+      (save-excursion
+        ;; Get visible window bounds
+        (let* ((bounds (flash-emacs--get-window-bounds window))
+               (start-line (car bounds))
+               (end-line (cdr bounds)))
+          ;; Move to start of visible area
+          (goto-line start-line)
+          (let ((search-start (point)))
+            ;; Move to end of visible area
+            (goto-line (1+ end-line))
+            (let ((search-end (point)))
+              ;; Search only within visible bounds
+              (goto-char search-start)
+              (while (search-forward pattern search-end t)
+                (let ((match-start (match-beginning 0))
+                      (match-end (match-end 0)))
+                  (push (list :pos match-start
+                             :end-pos match-end
+                             :window window
+                             :buffer (current-buffer)
+                             :text (buffer-substring-no-properties match-start match-end))
+                        matches))))))))
     (nreverse matches)))
 
 (defun flash-emacs--search-pattern (pattern)
@@ -109,21 +153,33 @@ This pattern matches the search pattern followed by any character."
 
 (defun flash-emacs--find-conflicting-labels (search-pattern labels window)
   "Find labels that would conflict with continuing the search pattern.
-Returns a list of labels to exclude."
+Returns a list of labels to exclude. Only searches within visible window bounds."
   (let ((skip-pattern (flash-emacs--create-skip-pattern search-pattern))
-        (conflicting-labels '()))
+        (conflicting-labels '())
+        (case-fold-search (flash-emacs--should-ignore-case search-pattern)))
     (when skip-pattern
       (with-current-buffer (window-buffer window)
         (save-excursion
-          (goto-char (point-min))
-          (while (re-search-forward skip-pattern nil t)
-            (let* ((match-end (match-end 0))
-                   (following-char (buffer-substring-no-properties 
-                                   (1- match-end) match-end)))
-              ;; Check if this following character is in our labels
-              (when (and following-char 
-                        (cl-find following-char labels :test #'string=))
-                (push following-char conflicting-labels)))))))
+          ;; Get visible window bounds
+          (let* ((bounds (flash-emacs--get-window-bounds window))
+                 (start-line (car bounds))
+                 (end-line (cdr bounds)))
+            ;; Move to start of visible area
+            (goto-line start-line)
+            (let ((search-start (point)))
+              ;; Move to end of visible area
+              (goto-line (1+ end-line))
+              (let ((search-end (point)))
+                ;; Search only within visible bounds
+                (goto-char search-start)
+                (while (re-search-forward skip-pattern search-end t)
+                  (let* ((match-end (match-end 0))
+                         (following-char (buffer-substring-no-properties 
+                                         (1- match-end) match-end)))
+                    ;; Check if this following character is in our labels
+                    (when (and following-char 
+                              (cl-find following-char labels :test #'string=))
+                      (push following-char conflicting-labels))))))))))
     (delete-dups conflicting-labels)))
 
 (defun flash-emacs--filter-labels-for-pattern (labels search-pattern windows)
@@ -160,11 +216,15 @@ Returns a list of labels to exclude."
     (abs (- match-pos current-point))))
 
 (defun flash-emacs--sort-matches (matches current-point current-window)
-  "Sort MATCHES by window priority (current window first) then by distance from CURRENT-POINT."
+  "Sort MATCHES by window priority (current window first) then by distance from CURRENT-POINT.
+When same buffer is shown in multiple windows, strongly prioritize current window."
   (sort matches
         (lambda (a b)
           (let ((a-window (plist-get a :window))
                 (b-window (plist-get b :window))
+                (a-buffer (plist-get a :buffer))
+                (b-buffer (plist-get b :buffer))
+                (current-buffer (window-buffer current-window))
                 (a-distance (flash-emacs--distance-from-cursor a current-point))
                 (b-distance (flash-emacs--distance-from-cursor b current-point)))
             ;; First priority: current window
@@ -178,7 +238,19 @@ Returns a list of labels to exclude."
              ;; B in current window, A not - B wins
              ((eq b-window current-window)
               nil)
-             ;; Neither in current window - sort by distance
+             ;; Special case: both matches are in current buffer but different windows
+             ;; Prioritize the one that would keep us in current window
+             ((and (eq a-buffer current-buffer) (eq b-buffer current-buffer)
+                   (not (eq a-window current-window)) (not (eq b-window current-window)))
+              ;; Both are in current buffer but different windows - sort by distance
+              (< a-distance b-distance))
+             ;; A is in current buffer, B is not - A wins
+             ((eq a-buffer current-buffer)
+              t)
+             ;; B is in current buffer, A is not - B wins
+             ((eq b-buffer current-buffer)
+              nil)
+             ;; Neither in current window or buffer - sort by distance
              (t
               (< a-distance b-distance)))))))
 
@@ -253,16 +325,26 @@ Prioritizes matches in CURRENT-WINDOW."
               matches))
 
 (defun flash-emacs--jump-to-match (match)
-  "Jump to the position of MATCH."
-  (let ((window (plist-get match :window))
-        (pos (plist-get match :pos)))
-    ;; Switch to target window if needed
-    (unless (eq window (selected-window))
-      (select-window window))
-    ;; Jump to position
-    (goto-char pos)
-    ;; Add to mark ring
-    (push-mark)))
+  "Jump to the position of MATCH.
+Prioritizes staying in current window if the target buffer is already displayed there."
+  (let ((target-window (plist-get match :window))
+        (target-buffer (plist-get match :buffer))
+        (pos (plist-get match :pos))
+        (current-window (selected-window)))
+    
+    ;; Check if current window shows the same buffer as the target
+    (if (eq (window-buffer current-window) target-buffer)
+        ;; Stay in current window and just jump to position
+        (progn
+          (goto-char pos)
+          ;; (push-mark)
+          )
+      ;; Different buffer - switch to target window
+      (progn
+        (select-window target-window)
+        (goto-char pos)
+        ;; (push-mark)
+        ))))
 
 ;;; Main function
 
@@ -330,4 +412,4 @@ Prioritizes matches in CURRENT-WINDOW."
 
 (provide 'flash-emacs)
 
-;;; flash-emacs.el ends here 
+;;; flash-emacs.el ends here
