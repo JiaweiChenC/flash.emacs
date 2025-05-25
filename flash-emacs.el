@@ -478,12 +478,16 @@ Only assigns labels to the closest matches that can receive labels."
         (overlay-put overlay 'window window)
         overlay))))
 
-(defun flash-emacs--show-overlays (matches)
-  "Display overlays for MATCHES."
+(defun flash-emacs--show-overlays (all-matches labeled-matches)
+  "Display overlays for ALL-MATCHES (background) and LABELED-MATCHES (labels).
+ALL-MATCHES get background highlighting, LABELED-MATCHES get both background and labels."
   (flash-emacs--clear-overlays)
-  (dolist (match matches)
+  ;; Show background highlighting for ALL matches
+  (dolist (match all-matches)
     (when-let* ((match-overlay (flash-emacs--create-match-overlay match)))
-      (push match-overlay flash-emacs--overlays))
+      (push match-overlay flash-emacs--overlays)))
+  ;; Show labels only for labeled matches
+  (dolist (match labeled-matches)
     (when-let* ((label-overlay (flash-emacs--create-label-overlay match)))
       (push label-overlay flash-emacs--overlays))))
 
@@ -545,23 +549,23 @@ Returns the label character if it's a jump, nil otherwise."
 (defun flash-emacs--update-search (state)
   "Update search results for the current pattern in STATE."
   (let* ((pattern (flash-emacs--get-pattern state))
-         (matches (flash-emacs--search-pattern pattern))
+         (all-matches (flash-emacs--search-pattern pattern))
          (current-window (plist-get state :current-window))
          (current-point (plist-get state :start-point))
          (all-labels (flash-emacs--get-all-labels state))
          (windows (if flash-emacs-multi-window
                      (window-list)
                    (list (selected-window)))))
-    (when matches
+    (when all-matches
       ;; Filter labels to avoid conflicts with search pattern
       (let* ((filtered-label-chars (flash-emacs--filter-labels-for-pattern 
                                    all-labels pattern windows))
-             (filtered-labels (mapconcat #'char-to-string filtered-label-chars "")))
-        (setq matches (flash-emacs--assign-labels matches filtered-labels 
-                                                 current-window current-point))
-        (flash-emacs--set-matches state matches)
-        (flash-emacs--show-overlays matches)))
-    matches))
+             (filtered-labels (mapconcat #'char-to-string filtered-label-chars ""))
+             (labeled-matches (flash-emacs--assign-labels all-matches filtered-labels 
+                                                         current-window current-point)))
+        (flash-emacs--set-matches state labeled-matches)
+        (flash-emacs--show-overlays all-matches labeled-matches)))
+    all-matches))
 
 (defun flash-emacs--handle-input (state)
   "Handle one character of user input for STATE.
@@ -646,7 +650,7 @@ In evil visual mode, jumping will extend the selection to the target."
               (current-point (point)))
           (setq matches (flash-emacs--assign-labels matches flash-emacs-labels
                                                    current-window current-point))
-          (flash-emacs--show-overlays matches)
+          (flash-emacs--show-overlays matches matches)
           (sit-for 3)
           (flash-emacs--clear-overlays))))))
 
