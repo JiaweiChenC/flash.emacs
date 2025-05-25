@@ -273,29 +273,76 @@ Only searches within the visible area of the window."
 ;;; Label assignment
 
 (defun flash-emacs--distance-from-cursor (match current-window current-point)
-  "Calculate distance of MATCH from cursor in CURRENT-WINDOW at CURRENT-POINT."
+  "Calculate 2D distance of MATCH from cursor in CURRENT-WINDOW at CURRENT-POINT.
+Uses flash.nvim's algorithm: converts (line, col) to 1D coordinate and calculates distance."
   (if (eq (plist-get match :window) current-window)
-      (abs (- (plist-get match :pos) current-point))
+      (let* ((match-pos (plist-get match :pos))
+             ;; Get line and column for cursor position
+             (cursor-line (line-number-at-pos current-point))
+             (cursor-col (save-excursion 
+                          (goto-char current-point)
+                          (current-column)))
+             ;; Get line and column for match position  
+             (match-line (line-number-at-pos match-pos))
+             (match-col (save-excursion
+                         (goto-char match-pos)
+                         (current-column)))
+             ;; Convert to 1D coordinates (like flash.nvim)
+             ;; Use actual window width (equivalent to vim.go.columns)
+             (columns-per-line (with-selected-window current-window
+                                (window-total-width)))
+             (cursor-1d (+ (* cursor-line columns-per-line) cursor-col))
+             (match-1d (+ (* match-line columns-per-line) match-col)))
+        (abs (- cursor-1d match-1d)))
     ;; Matches in other windows get a large distance penalty
     10000))
 
 (defun flash-emacs--sort-matches (matches current-window current-point)
-  "Sort MATCHES by priority: current window first, then by distance."
+  "Sort MATCHES by priority: current window first, then by distance, then by position.
+Implements flash.nvim's exact sorting algorithm."
   (sort matches
         (lambda (a b)
           (let ((a-window (plist-get a :window))
                 (b-window (plist-get b :window)))
             (cond
-             ;; Both in current window - sort by distance
-             ((and (eq a-window current-window) (eq b-window current-window))
-              (< (flash-emacs--distance-from-cursor a current-window current-point)
-                 (flash-emacs--distance-from-cursor b current-window current-point)))
-             ;; A in current window, B not - A wins
-             ((eq a-window current-window) t)
-             ;; B in current window, A not - B wins
-             ((eq b-window current-window) nil)
-             ;; Both in other windows - sort by position
-             (t (< (plist-get a :pos) (plist-get b :pos))))))))
+             ;; Different windows - current window wins
+             ((not (eq a-window b-window))
+              (cond
+               ((eq a-window current-window) t)
+               ((eq b-window current-window) nil)
+               (t (< a-window b-window))))
+             
+             ;; Same window - use distance if in current window
+             ((eq a-window current-window)
+              (let ((dist-a (flash-emacs--distance-from-cursor a current-window current-point))
+                    (dist-b (flash-emacs--distance-from-cursor b current-window current-point)))
+                (cond
+                 ;; Different distances - closer wins
+                 ((not (= dist-a dist-b))
+                  (< dist-a dist-b))
+                 ;; Same distance - fall back to position
+                 (t
+                  (let ((a-line (line-number-at-pos (plist-get a :pos)))
+                        (b-line (line-number-at-pos (plist-get b :pos))))
+                    (cond
+                     ;; Different lines - earlier line wins
+                     ((not (= a-line b-line))
+                      (< a-line b-line))
+                     ;; Same line - earlier column wins
+                     (t
+                      (< (plist-get a :pos) (plist-get b :pos)))))))))
+             
+             ;; Same non-current window - sort by position
+             (t
+              (let ((a-line (line-number-at-pos (plist-get a :pos)))
+                    (b-line (line-number-at-pos (plist-get b :pos))))
+                (cond
+                 ;; Different lines - earlier line wins
+                 ((not (= a-line b-line))
+                  (< a-line b-line))
+                 ;; Same line - earlier column wins
+                 (t
+                  (< (plist-get a :pos) (plist-get b :pos)))))))))))
 
 (defun flash-emacs--create-skip-pattern (search-pattern)
   "Create a skip pattern to avoid label conflicts with search continuation.
