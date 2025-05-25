@@ -15,28 +15,28 @@
     (flash-emacs--set-pattern state "")
     (let* ((current-pattern (flash-emacs--get-pattern state))
            (prompt (if (> (length current-pattern) 0)
-                      (format "%s: " current-pattern)
-                    ": ")))
-      (cl-assert (string= prompt ": ") nil
-                "Empty pattern should show ': '"))
+                      current-pattern
+                    "")))
+      (cl-assert (string= prompt "") nil
+                "Empty pattern should show empty string"))
     
     ;; Test with pattern
     (flash-emacs--set-pattern state "test")
     (let* ((current-pattern (flash-emacs--get-pattern state))
            (prompt (if (> (length current-pattern) 0)
-                      (format "%s: " current-pattern)
-                    ": ")))
-      (cl-assert (string= prompt "test: ") nil
-                "Pattern 'test' should show 'test: '"))
+                      current-pattern
+                    "")))
+      (cl-assert (string= prompt "test") nil
+                "Pattern 'test' should show 'test'"))
     
     ;; Test with single character
     (flash-emacs--set-pattern state "t")
     (let* ((current-pattern (flash-emacs--get-pattern state))
            (prompt (if (> (length current-pattern) 0)
-                      (format "%s: " current-pattern)
-                    ": ")))
-      (cl-assert (string= prompt "t: ") nil
-                "Pattern 't' should show 't: '"))))
+                      current-pattern
+                    "")))
+      (cl-assert (string= prompt "t") nil
+                "Pattern 't' should show 't'"))))
 
 (defun test-silent-jump ()
   "Test that jumping doesn't produce messages."
@@ -68,9 +68,9 @@ apple banana cherry date
 hello world example text
 
 The prompt now shows:
-- Empty pattern: ': '
-- With pattern 'te': 'te: '
-- With pattern 'test': 'test: '
+- Empty pattern: '' (empty)
+- With pattern 'te': 'te'
+- With pattern 'test': 'test'
 
 No more 'Flash [pattern]: ' format!
 Also, jumping is now silent (no 'Jumped to: xxx' messages).
@@ -84,7 +84,7 @@ Try:
     (goto-char (point-min))
     
     (switch-to-buffer (current-buffer))
-    (flash-emacs-mode 1)
+    (local-set-key (kbd "C-c j") #'flash-emacs-jump)
     
     (message "New prompt demo ready! Try C-c j to see the simplified interface.")))
 

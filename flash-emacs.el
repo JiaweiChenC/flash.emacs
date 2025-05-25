@@ -27,10 +27,9 @@
 ;;
 ;; Usage:
 ;;   M-x flash-emacs-jump  ; Start flash jump
-;;   C-c j                 ; Default key binding (when minor mode enabled)
 ;;
-;; To enable the minor mode globally:
-;;   (flash-emacs-mode 1)
+;; To bind to a key (recommended):
+;;   (global-set-key (kbd "C-c j") #'flash-emacs-jump)
 ;;
 ;; For more information, see the README.md file or visit:
 ;; https://github.com/flash-emacs/flash-emacs
@@ -369,8 +368,8 @@ Returns the label character if it's a jump, nil otherwise."
 Returns nil to exit, t to continue."
   (let* ((current-pattern (flash-emacs--get-pattern state))
          (prompt (if (> (length current-pattern) 0)
-                    (format "%s: " current-pattern)
-                  ": "))
+                    current-pattern
+                  ""))
          (char (read-char-exclusive prompt))
          (matches (flash-emacs--get-matches state)))
     
@@ -467,27 +466,6 @@ Type characters to search, then use the displayed labels to jump."
       (message "Match at %d: label '%s'" 
                (plist-get match :pos) 
                (plist-get match :label)))))
-
-;;; Minor mode (optional)
-
-(defvar flash-emacs-mode-map
-  (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "C-c j") #'flash-emacs-jump)
-    map)
-  "Keymap for flash-emacs minor mode.")
-
-;;;###autoload
-(define-minor-mode flash-emacs-mode
-  "Minor mode for flash-emacs jump navigation."
-  :lighter " Flash"
-  :keymap flash-emacs-mode-map
-  :group 'flash-emacs)
-
-;;;###autoload
-(define-globalized-minor-mode global-flash-emacs-mode
-  flash-emacs-mode
-  (lambda () (flash-emacs-mode 1))
-  :group 'flash-emacs)
 
 (provide 'flash-emacs)
 

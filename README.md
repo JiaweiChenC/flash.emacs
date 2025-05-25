@@ -13,7 +13,6 @@ An Emacs implementation of flash.nvim's standalone jump functionality, providing
 - **Intelligent conflict avoidance**: Prevents label conflicts with search pattern continuation
 - **Clean interface**: Simplified prompts showing only the search pattern and silent jumping
 - **Customizable appearance**: Configurable faces and label characters
-- **Minor mode integration**: Easy to enable/disable with key bindings
 
 ## Installation
 
@@ -32,7 +31,7 @@ Flash-emacs is available from the following package repositories:
    ```elisp
    (add-to-list 'load-path "/path/to/flash-emacs")
    (require 'flash-emacs)
-   (flash-emacs-mode 1)  ; Enable globally
+   (global-set-key (kbd "C-c j") #'flash-emacs-jump)  ; Bind to preferred key
    ```
 
 #### use-package
@@ -40,8 +39,7 @@ Flash-emacs is available from the following package repositories:
 ```elisp
 (use-package flash-emacs
   :ensure t
-  :config
-  (flash-emacs-mode 1))
+  :bind ("C-c j" . flash-emacs-jump))
 ```
 
 #### straight.el
@@ -49,13 +47,13 @@ Flash-emacs is available from the following package repositories:
 ```elisp
 (straight-use-package
  '(flash-emacs :type git :host github :repo "flash-emacs/flash-emacs"))
-(flash-emacs-mode 1)
+(global-set-key (kbd "C-c j") #'flash-emacs-jump)
 ```
 
 ## Quick Start
 
 1. **Install the package** using one of the methods above
-2. **Enable the minor mode**: `(flash-emacs-mode 1)`
+2. **Bind to a key**: `(global-set-key (kbd "C-c j") #'flash-emacs-jump)`
 3. **Start jumping**: Press `C-c j` or run `M-x flash-emacs-jump`
 4. **Type to search**: Enter characters to build your search pattern
 5. **Jump**: Type a label character to jump to that match
@@ -90,13 +88,13 @@ Buffer content: "test testing tester tests testament tea team"
 
 1. Press C-c j (start flash jump)
 2. Type 'te'
-   - Prompt shows: "te: "
+   - Prompt shows: "te"
    - Matches: test, testing, tester, tests, testament, tea, team
    - Labels assigned: d, f, g, h, j, k, l (note: 'a' and 's' excluded)
    - Why excluded? Because 'tea' and 'tes' exist in text
 3. Type 'd' → jumps silently to first match with label 'd'
    OR
-   Type 'a' → searches for 'tea' (extends pattern, prompt shows "tea: ")
+   Type 'a' → searches for 'tea' (extends pattern, prompt shows "tea")
 
 With many matches:
 1. First 26 matches get lowercase: a, s, d, f, g, h, j, k, l, q, w, e, r, t, y, u, i, o, p, z, x, c, v, b, n, m
@@ -111,10 +109,6 @@ With many matches:
 2. **Type search pattern**: Enter characters to build your search
 3. **Jump to match**: Type a label character to jump to that position
 4. **Cancel**: Press `C-g` or `ESC` to cancel
-
-### Key Bindings (when flash-emacs-mode is enabled)
-
-- `C-c j` - Start flash jump
 
 ### Customization
 

@@ -144,7 +144,7 @@ Try:
     (goto-char (point-min))
     
     (switch-to-buffer (current-buffer))
-    (flash-emacs-mode 1)
+    (local-set-key (kbd "C-c j") #'flash-emacs-jump)
     
     (message "Uppercase labels demo ready! Try searching for 'a', 'b', or 'c'.")))
 

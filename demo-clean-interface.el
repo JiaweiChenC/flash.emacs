@@ -21,7 +21,7 @@ NEW IMPROVEMENTS:
 
 BEFORE vs AFTER:
 Before: Flash [test]: 
-After:  test: 
+After:  test
 
 Before: Jumped to: content
 After:  (silent jump)
@@ -41,9 +41,9 @@ INSTRUCTIONS:
 
 1. Press C-c j to start flash jump
 2. Notice the clean prompt format:
-   - Empty: ': '
-   - Pattern 'te': 'te: '
-   - Pattern 'test': 'test: '
+   - Empty: '' (empty)
+   - Pattern 'te': 'te'
+   - Pattern 'test': 'test'
 
 3. Type characters to build your search pattern
 4. Use labels to jump (notice silent jumping)
@@ -63,7 +63,7 @@ Ready to try the clean interface!
     (goto-char (point-min))
     
     (switch-to-buffer (current-buffer))
-    (flash-emacs-mode 1)
+    (local-set-key (kbd "C-c j") #'flash-emacs-jump)
     
     (message "Clean interface demo ready! Press C-c j to experience the improved UI.")))
 
@@ -86,13 +86,13 @@ Ready to try the clean interface!
   
   (message "NEW FORMAT:")
   (sit-for 1)
-  (message ": ")
+  (message "'' (empty)")
   (sit-for 1)
-  (message "t: ")
+  (message "t")
   (sit-for 1)
-  (message "te: ")
+  (message "te")
   (sit-for 1)
-  (message "test: ")
+  (message "test")
   (sit-for 2)
   
   (message "Much cleaner! Try the real thing with C-c j"))
