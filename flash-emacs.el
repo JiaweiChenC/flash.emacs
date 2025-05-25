@@ -25,8 +25,9 @@
   :group 'navigation
   :prefix "flash-emacs-")
 
-(defcustom flash-emacs-labels "asdfghjklqwertyuiopzxcvbnm"
-  "Characters to use as jump labels."
+(defcustom flash-emacs-labels "asdfghjklqwertyuiopzxcvbnmASFGHJKLQWERTYUIOPZXCVBNM"
+  "Characters to use as jump labels.
+Includes both lowercase and uppercase letters for more available labels."
   :type 'string
   :group 'flash-emacs)
 
@@ -158,22 +159,39 @@ Returns a list of labels to exclude."
   (let ((match-pos (plist-get match :pos)))
     (abs (- match-pos current-point))))
 
-(defun flash-emacs--sort-matches (matches current-point)
-  "Sort MATCHES by distance from CURRENT-POINT."
+(defun flash-emacs--sort-matches (matches current-point current-window)
+  "Sort MATCHES by window priority (current window first) then by distance from CURRENT-POINT."
   (sort matches
         (lambda (a b)
-          (< (flash-emacs--distance-from-cursor a current-point)
-             (flash-emacs--distance-from-cursor b current-point)))))
+          (let ((a-window (plist-get a :window))
+                (b-window (plist-get b :window))
+                (a-distance (flash-emacs--distance-from-cursor a current-point))
+                (b-distance (flash-emacs--distance-from-cursor b current-point)))
+            ;; First priority: current window
+            (cond
+             ;; Both in current window - sort by distance
+             ((and (eq a-window current-window) (eq b-window current-window))
+              (< a-distance b-distance))
+             ;; A in current window, B not - A wins
+             ((eq a-window current-window)
+              t)
+             ;; B in current window, A not - B wins
+             ((eq b-window current-window)
+              nil)
+             ;; Neither in current window - sort by distance
+             (t
+              (< a-distance b-distance)))))))
 
-(defun flash-emacs--assign-labels (matches labels current-point pattern windows)
-  "Assign single-character labels to MATCHES, filtering out conflicting labels."
+(defun flash-emacs--assign-labels (matches labels current-point pattern windows current-window)
+  "Assign single-character labels to MATCHES, filtering out conflicting labels.
+Prioritizes matches in CURRENT-WINDOW."
   (let* ((filtered-labels (flash-emacs--filter-labels-for-pattern labels pattern windows))
-         (sorted-matches (flash-emacs--sort-matches matches current-point))
+         (sorted-matches (flash-emacs--sort-matches matches current-point current-window))
          (max-labels (length filtered-labels))
          (labeled-matches '())
          (label-index 0))
     
-    ;; Assign labels to closest matches
+    ;; Assign labels to closest matches (current window first)
     (dolist (match sorted-matches)
       (when (< label-index max-labels)
         (plist-put match :label (substring filtered-labels label-index (1+ label-index)))
@@ -187,22 +205,26 @@ Returns a list of labels to exclude."
 (defun flash-emacs--create-label-overlay (match)
   "Create an overlay for the label of MATCH."
   (let* ((pos (plist-get match :pos))
+         (buffer (plist-get match :buffer))
          (label (plist-get match :label)))
     (when label
-      (let ((overlay (make-overlay pos (1+ pos))))
-        (overlay-put overlay 'display 
-                    (propertize label 'face 'flash-emacs-label))
-        (overlay-put overlay 'flash-emacs 'label)
-        overlay))))
+      (with-current-buffer buffer
+        (let ((overlay (make-overlay pos (1+ pos))))
+          (overlay-put overlay 'display 
+                      (propertize label 'face 'flash-emacs-label))
+          (overlay-put overlay 'flash-emacs 'label)
+          overlay)))))
 
 (defun flash-emacs--create-match-overlay (match)
   "Create an overlay for highlighting MATCH."
   (let* ((pos (plist-get match :pos))
-         (end-pos (plist-get match :end-pos)))
-    (let ((overlay (make-overlay pos end-pos)))
-      (overlay-put overlay 'face 'flash-emacs-match)
-      (overlay-put overlay 'flash-emacs 'match)
-      overlay)))
+         (end-pos (plist-get match :end-pos))
+         (buffer (plist-get match :buffer)))
+    (with-current-buffer buffer
+      (let ((overlay (make-overlay pos end-pos)))
+        (overlay-put overlay 'face 'flash-emacs-match)
+        (overlay-put overlay 'flash-emacs 'match)
+        overlay))))
 
 (defun flash-emacs--show-overlays (all-matches labeled-matches)
   "Display overlays for ALL-MATCHES (background) and LABELED-MATCHES (labels)."
@@ -298,8 +320,9 @@ Returns a list of labels to exclude."
               (setq matches (flash-emacs--search-pattern pattern))
               (let ((windows (if flash-emacs-multi-window
                                (window-list)
-                             (list (selected-window)))))
-                (setq labeled-matches (flash-emacs--assign-labels matches flash-emacs-labels (point) pattern windows)))
+                             (list (selected-window))))
+                    (current-window (selected-window)))
+                (setq labeled-matches (flash-emacs--assign-labels matches flash-emacs-labels (point) pattern windows current-window)))
               (flash-emacs--show-overlays matches labeled-matches))))
       
       ;; Cleanup
