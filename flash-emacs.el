@@ -608,29 +608,29 @@ Returns a list of labels to exclude."
 (defun flash-emacs--filter-labels-for-matches (labels search-pattern match-buffers)
   "Filter out labels that would conflict with search pattern continuation.
 Only remove labels if continuing the search with that label would produce matches.
-This implements flash.nvim's smarter approach."
+Only checks conflicts in the current buffer to avoid cross-buffer interference."
   (if (or (not search-pattern) (= (length search-pattern) 0))
       labels
     (let ((conflicting-labels '())
-          (label-chars (string-to-list labels)))
+          (label-chars (string-to-list labels))
+          (current-buffer (current-buffer)))
       ;; For each label character, check if pattern + label would produce matches
+      ;; Only check in the current buffer to avoid cross-buffer conflicts
       (dolist (label-char label-chars)
         (let* ((label-str (char-to-string label-char))
                (extended-pattern (concat search-pattern label-str))
                (would-have-matches nil))
-          ;; Check if the extended pattern would produce matches in any buffer
-          (dolist (buffer match-buffers)
-            (when (and (buffer-live-p buffer) (not would-have-matches))
-              (with-current-buffer buffer
-                (save-excursion
-                  (goto-char (point-min))
-                  (let ((case-fold-search (not flash-emacs-case-sensitive))
-                        (search-func (if (eq flash-emacs-search-mode 'regex)
-                                        #'re-search-forward
-                                      #'search-forward)))
-                    (when (funcall search-func extended-pattern nil t)
-                      (setq would-have-matches t)))))))
-          ;; If the extended pattern would have matches, it's a conflict
+          ;; Only check the current buffer for conflicts
+          (with-current-buffer current-buffer
+            (save-excursion
+              (goto-char (point-min))
+              (let ((case-fold-search (not flash-emacs-case-sensitive))
+                    (search-func (if (eq flash-emacs-search-mode 'regex)
+                                    #'re-search-forward
+                                  #'search-forward)))
+                (when (funcall search-func extended-pattern nil t)
+                  (setq would-have-matches t)))))
+          ;; If the extended pattern would have matches in current buffer, it's a conflict
           (when would-have-matches
             (push label-str conflicting-labels))))
       
