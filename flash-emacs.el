@@ -529,16 +529,19 @@ Enhanced to handle matches from multiple buffers."
                       ;; Different buffers - sort by buffer name for consistency
                       (string< (buffer-name a-buffer) (buffer-name b-buffer)))))))))))))
 
-(defun flash-emacs--create-skip-pattern (search-pattern)
+(defun flash-emacs--create-skip-pattern (search-pattern labels)
   "Create a skip pattern to avoid label conflicts with search continuation.
-This pattern matches the search pattern followed by any character."
-  (when (and search-pattern (> (length search-pattern) 0))
-    (concat (regexp-quote search-pattern) ".")))
+This pattern matches the search pattern followed by any label character.
+Uses flash.nvim's approach: only match actual label characters that follow the pattern."
+  (when (and search-pattern (> (length search-pattern) 0) labels)
+    (let ((label-chars (mapconcat (lambda (label) (regexp-quote label)) labels "")))
+      (when (> (length label-chars) 0)
+        (concat "\\(" (regexp-quote search-pattern) "\\)" "[" label-chars "]")))))
 
 (defun flash-emacs--find-conflicting-labels (search-pattern labels window)
   "Find labels that would conflict with continuing the search pattern.
 Returns a list of labels to exclude."
-  (let ((skip-pattern (flash-emacs--create-skip-pattern search-pattern))
+  (let ((skip-pattern (flash-emacs--create-skip-pattern search-pattern labels))
         (conflicting-labels '()))
     (when skip-pattern
       (with-current-buffer (if (or noninteractive 
@@ -551,16 +554,15 @@ Returns a list of labels to exclude."
             (let* ((match-end (match-end 0))
                    (following-char (buffer-substring-no-properties 
                                    (1- match-end) match-end)))
-              ;; Check if this following character is in our labels
-              (when (and following-char 
-                        (cl-find following-char labels :test #'string=))
+              ;; The pattern already matched a label character, so add it to conflicts
+              (when following-char
                 (push following-char conflicting-labels)))))))
     (delete-dups conflicting-labels)))
 
 (defun flash-emacs--find-conflicting-labels-in-buffer (search-pattern labels buffer)
   "Find labels that would conflict with continuing the search pattern in BUFFER.
 Returns a list of labels to exclude."
-  (let ((skip-pattern (flash-emacs--create-skip-pattern search-pattern))
+  (let ((skip-pattern (flash-emacs--create-skip-pattern search-pattern labels))
         (conflicting-labels '()))
     (when skip-pattern
       (with-current-buffer buffer
@@ -570,9 +572,8 @@ Returns a list of labels to exclude."
             (let* ((match-end (match-end 0))
                    (following-char (buffer-substring-no-properties 
                                    (1- match-end) match-end)))
-              ;; Check if this following character is in our labels
-              (when (and following-char 
-                        (cl-find following-char labels :test #'string=))
+              ;; The pattern already matched a label character, so add it to conflicts
+              (when following-char
                 (push following-char conflicting-labels)))))))
     (delete-dups conflicting-labels)))
 
@@ -606,32 +607,45 @@ Returns a list of labels to exclude."
 
 (defun flash-emacs--filter-labels-for-matches (labels search-pattern match-buffers)
   "Filter out labels that would conflict with search pattern continuation.
-Check conflicts in all MATCH-BUFFERS, not just visible windows."
+Only remove labels if continuing the search with that label would produce matches.
+This implements flash.nvim's smarter approach."
   (if (or (not search-pattern) (= (length search-pattern) 0))
       labels
-    (let ((conflicting-labels '()))
-      ;; Collect conflicting labels from all buffers that have matches
-      (dolist (buffer match-buffers)
-        (when (buffer-live-p buffer)
-          (setq conflicting-labels 
-                (append conflicting-labels 
-                        (flash-emacs--find-conflicting-labels-in-buffer 
-                         search-pattern 
-                         (mapcar #'char-to-string (string-to-list labels)) 
-                         buffer)))))
+    (let ((conflicting-labels '())
+          (label-chars (string-to-list labels)))
+      ;; For each label character, check if pattern + label would produce matches
+      (dolist (label-char label-chars)
+        (let* ((label-str (char-to-string label-char))
+               (extended-pattern (concat search-pattern label-str))
+               (would-have-matches nil))
+          ;; Check if the extended pattern would produce matches in any buffer
+          (dolist (buffer match-buffers)
+            (when (and (buffer-live-p buffer) (not would-have-matches))
+              (with-current-buffer buffer
+                (save-excursion
+                  (goto-char (point-min))
+                  (let ((case-fold-search (not flash-emacs-case-sensitive))
+                        (search-func (if (eq flash-emacs-search-mode 'regex)
+                                        #'re-search-forward
+                                      #'search-forward)))
+                    (when (funcall search-func extended-pattern nil t)
+                      (setq would-have-matches t)))))))
+          ;; If the extended pattern would have matches, it's a conflict
+          (when would-have-matches
+            (push label-str conflicting-labels))))
+      
       ;; Remove conflicting labels and their case variants
-      (let ((label-chars (string-to-list labels)))
-        (mapconcat #'char-to-string
-                   (cl-remove-if (lambda (label-char)
-                                   (let ((label-str (char-to-string label-char)))
-                                     (or (cl-find label-str conflicting-labels :test #'string=)
-                                         ;; Also remove the opposite case
-                                         (cl-find (if (= label-char (upcase label-char))
-                                                     (downcase label-str)
-                                                   (upcase label-str))
-                                                 conflicting-labels :test #'string=))))
-                                 label-chars)
-                   "")))))
+      (mapconcat #'char-to-string
+                 (cl-remove-if (lambda (label-char)
+                                 (let ((label-str (char-to-string label-char)))
+                                   (or (cl-find label-str conflicting-labels :test #'string=)
+                                       ;; Also remove the opposite case
+                                       (cl-find (if (= label-char (upcase label-char))
+                                                   (downcase label-str)
+                                                 (upcase label-str))
+                                               conflicting-labels :test #'string=))))
+                               label-chars)
+                 ""))))
 
 (defun flash-emacs--match-priority (match current-window current-point current-buffer)
   "Calculate priority score for MATCH. Lower scores = higher priority."
