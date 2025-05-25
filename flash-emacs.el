@@ -297,8 +297,11 @@ Uses flash.nvim's algorithm: converts (line, col) to 1D coordinate and calculate
                          (current-column)))
              ;; Convert to 1D coordinates (like flash.nvim)
              ;; Use actual window width (equivalent to vim.go.columns)
-             (columns-per-line (with-selected-window current-window
-                                (window-total-width)))
+             (columns-per-line (if (eq (current-buffer) (window-buffer current-window))
+                                  (with-selected-window current-window
+                                    (window-total-width))
+                                ;; For popup buffers, use a reasonable default width
+                                80))
              (cursor-1d (+ (* cursor-line columns-per-line) cursor-col))
              (match-1d (+ (* match-line columns-per-line) match-col)))
         (abs (- cursor-1d match-1d)))
@@ -436,7 +439,17 @@ Only assigns labels to the closest matches that can receive labels."
          (window (plist-get match :window))
          (label (plist-get match :label)))
     (when label
-      (with-selected-window window
+      ;; Handle popup buffers where window doesn't display current buffer
+      (if (eq (current-buffer) (window-buffer window))
+          ;; Normal case: window displays the buffer
+          (with-selected-window window
+            (let ((overlay (make-overlay pos (1+ pos))))
+              (overlay-put overlay 'display 
+                          (propertize label 'face 'flash-emacs-label))
+              (overlay-put overlay 'flash-emacs 'label)
+              (overlay-put overlay 'window window)
+              overlay))
+        ;; Popup buffer case: create overlay directly in current buffer
         (let ((overlay (make-overlay pos (1+ pos))))
           (overlay-put overlay 'display 
                       (propertize label 'face 'flash-emacs-label))
@@ -449,7 +462,16 @@ Only assigns labels to the closest matches that can receive labels."
   (let* ((pos (plist-get match :pos))
          (end-pos (plist-get match :end-pos))
          (window (plist-get match :window)))
-    (with-selected-window window
+    ;; Handle popup buffers where window doesn't display current buffer
+    (if (eq (current-buffer) (window-buffer window))
+        ;; Normal case: window displays the buffer
+        (with-selected-window window
+          (let ((overlay (make-overlay pos end-pos)))
+            (overlay-put overlay 'face 'flash-emacs-match)
+            (overlay-put overlay 'flash-emacs 'match)
+            (overlay-put overlay 'window window)
+            overlay))
+      ;; Popup buffer case: create overlay directly in current buffer
       (let ((overlay (make-overlay pos end-pos)))
         (overlay-put overlay 'face 'flash-emacs-match)
         (overlay-put overlay 'flash-emacs 'match)
