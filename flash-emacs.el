@@ -88,7 +88,7 @@ When t, after using all lowercase labels, uppercase versions will be used."
   :type 'integer
   :group 'flash-emacs)
 
-(defcustom flash-emacs-max-matches 100
+(defcustom flash-emacs-max-matches 500
   "Maximum number of matches to process."
   :type 'integer
   :group 'flash-emacs)
@@ -203,8 +203,13 @@ Returns (start-line . end-line) where lines are 1-indexed."
   (let ((win-start (window-start window))
         (win-end (window-end window)))
     (with-current-buffer (window-buffer window)
-      (cons (line-number-at-pos win-start)
-            (line-number-at-pos win-end)))))
+      ;; Ensure positions are within buffer bounds
+      (let ((max-pos (point-max))
+            (min-pos (point-min)))
+        (setq win-start (max min-pos (min win-start max-pos)))
+        (setq win-end (max min-pos (min win-end max-pos)))
+        (cons (line-number-at-pos win-start)
+              (line-number-at-pos win-end))))))
 
 (defun flash-emacs--search-in-window (pattern window)
   "Search for PATTERN in WINDOW and return list of matches.
@@ -222,6 +227,9 @@ Only searches within the visible area of the window."
                (search-func (if (eq flash-emacs-search-mode 'regex)
                                #'re-search-forward
                              #'search-forward)))
+          ;; Ensure positions are within buffer bounds
+          (setq start-pos (max (point-min) (min start-pos (point-max))))
+          (setq end-pos (max (point-min) (min end-pos (point-max))))
           
           ;; Search only within visible bounds
           (goto-char start-pos)
@@ -401,14 +409,24 @@ Returns a list of labels to exclude."
                    "")))))
 
 (defun flash-emacs--assign-labels (matches labels current-window current-point)
-  "Assign single-character labels to MATCHES."
-  (let ((sorted-matches (flash-emacs--sort-matches matches current-window current-point))
-        (label-index 0))
-    (dolist (match sorted-matches)
-      (when (< label-index (length labels))
-        (plist-put match :label (substring labels label-index (1+ label-index)))
-        (setq label-index (1+ label-index))))
-    sorted-matches))
+  "Assign single-character labels to MATCHES.
+Only assigns labels to the closest matches that can receive labels."
+  (let* ((sorted-matches (flash-emacs--sort-matches matches current-window current-point))
+         (max-labels (length labels))
+         (labeled-matches '())
+         (label-index 0))
+    
+    ;; Only process matches that can get labels (flash.nvim behavior)
+    (let ((remaining-matches sorted-matches))
+      (while (and remaining-matches (< label-index max-labels))
+        (let ((match (car remaining-matches)))
+          (plist-put match :label (substring labels label-index (1+ label-index)))
+          (setq label-index (1+ label-index))
+          (push match labeled-matches)
+          (setq remaining-matches (cdr remaining-matches)))))
+    
+    ;; Return only the matches that got labels, in the order they were assigned
+    (nreverse labeled-matches)))
 
 ;;; Visual feedback
 
