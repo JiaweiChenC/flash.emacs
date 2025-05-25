@@ -212,6 +212,27 @@ Flash-emacs only shows labels for content visible in each window:
 
 This prevents overwhelming numbers of labels and improves performance, especially in large files.
 
+## Testing
+
+Run the test suite to verify functionality:
+
+```bash
+# Run basic functionality tests
+emacs --batch -l tests/test-basic-functionality.el
+
+# Run complete integration test
+emacs --batch -l tests/test-integration-complete.el
+
+# Run evil-mode integration tests
+emacs --batch -l tests/test-evil-integration.el
+
+# Interactive demos
+emacs -l tests/demo-complete.el
+emacs -l tests/demo-evil-complete.el
+```
+
+See `tests/README.md` for a complete list of available tests and demos.
+
 ## Comparison with flash.nvim
 
 Flash-emacs provides feature parity with flash.nvim:
