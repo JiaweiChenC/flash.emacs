@@ -366,19 +366,34 @@ Optimized with early termination and smart match limiting."
                                      (flash-emacs--search-in-buffer 
                                       pattern popup-buffer nil popup-matches-limit)))))))
         
-        ;; Finally, if we're in a popup buffer, also search regular buffers that might not be visible
-        (when (and (flash-emacs--is-popup-buffer-p)
-                  (< (length matches) max-useful-matches))
-          (let ((regular-buffer-limit 10))
-            (dolist (buffer (buffer-list))
-              (when (and (< (length matches) max-useful-matches)
-                        (buffer-live-p buffer)
-                        (not (member buffer searched-buffers)))
-                (let ((is-popup (with-current-buffer buffer (flash-emacs--is-popup-buffer-p))))
-                  (unless is-popup
-                    (setq matches (append matches 
-                                         (flash-emacs--search-in-buffer 
-                                          pattern buffer nil regular-buffer-limit))))))))))
+        ;; Finally, search additional buffers based on context
+        (when (< (length matches) max-useful-matches)
+          (cond
+           ;; If we're in a popup buffer, search regular buffers that might not be visible
+           ((flash-emacs--is-popup-buffer-p)
+            (let ((regular-buffer-limit 10))
+              (dolist (buffer (buffer-list))
+                (when (and (< (length matches) max-useful-matches)
+                          (buffer-live-p buffer)
+                          (not (member buffer searched-buffers)))
+                  (let ((is-popup (with-current-buffer buffer (flash-emacs--is-popup-buffer-p))))
+                    (unless is-popup
+                      (setq matches (append matches 
+                                           (flash-emacs--search-in-buffer 
+                                            pattern buffer nil regular-buffer-limit)))))))))
+           
+           ;; If we're in a regular buffer and multi-window is enabled, search other regular buffers
+           ((and flash-emacs-multi-window (not (flash-emacs--is-popup-buffer-p)))
+            (let ((regular-buffer-limit 10))
+              (dolist (buffer (buffer-list))
+                (when (and (< (length matches) max-useful-matches)
+                          (buffer-live-p buffer)
+                          (not (member buffer searched-buffers)))
+                  (let ((is-popup (with-current-buffer buffer (flash-emacs--is-popup-buffer-p))))
+                    (unless is-popup
+                      (setq matches (append matches 
+                                           (flash-emacs--search-in-buffer 
+                                            pattern buffer nil regular-buffer-limit))))))))))))
       
       (nreverse matches))))
 
@@ -542,6 +557,25 @@ Returns a list of labels to exclude."
                 (push following-char conflicting-labels)))))))
     (delete-dups conflicting-labels)))
 
+(defun flash-emacs--find-conflicting-labels-in-buffer (search-pattern labels buffer)
+  "Find labels that would conflict with continuing the search pattern in BUFFER.
+Returns a list of labels to exclude."
+  (let ((skip-pattern (flash-emacs--create-skip-pattern search-pattern))
+        (conflicting-labels '()))
+    (when skip-pattern
+      (with-current-buffer buffer
+        (save-excursion
+          (goto-char (point-min))
+          (while (re-search-forward skip-pattern nil t)
+            (let* ((match-end (match-end 0))
+                   (following-char (buffer-substring-no-properties 
+                                   (1- match-end) match-end)))
+              ;; Check if this following character is in our labels
+              (when (and following-char 
+                        (cl-find following-char labels :test #'string=))
+                (push following-char conflicting-labels)))))))
+    (delete-dups conflicting-labels)))
+
 (defun flash-emacs--filter-labels-for-pattern (labels search-pattern windows)
   "Filter out labels that would conflict with search pattern continuation."
   (if (or (not search-pattern) (= (length search-pattern) 0))
@@ -556,6 +590,35 @@ Returns a list of labels to exclude."
                                                              (mapcar #'char-to-string 
                                                                     (string-to-list labels)) 
                                                              window)))))
+      ;; Remove conflicting labels and their case variants
+      (let ((label-chars (string-to-list labels)))
+        (mapconcat #'char-to-string
+                   (cl-remove-if (lambda (label-char)
+                                   (let ((label-str (char-to-string label-char)))
+                                     (or (cl-find label-str conflicting-labels :test #'string=)
+                                         ;; Also remove the opposite case
+                                         (cl-find (if (= label-char (upcase label-char))
+                                                     (downcase label-str)
+                                                   (upcase label-str))
+                                                 conflicting-labels :test #'string=))))
+                                 label-chars)
+                   "")))))
+
+(defun flash-emacs--filter-labels-for-matches (labels search-pattern match-buffers)
+  "Filter out labels that would conflict with search pattern continuation.
+Check conflicts in all MATCH-BUFFERS, not just visible windows."
+  (if (or (not search-pattern) (= (length search-pattern) 0))
+      labels
+    (let ((conflicting-labels '()))
+      ;; Collect conflicting labels from all buffers that have matches
+      (dolist (buffer match-buffers)
+        (when (buffer-live-p buffer)
+          (setq conflicting-labels 
+                (append conflicting-labels 
+                        (flash-emacs--find-conflicting-labels-in-buffer 
+                         search-pattern 
+                         (mapcar #'char-to-string (string-to-list labels)) 
+                         buffer)))))
       ;; Remove conflicting labels and their case variants
       (let ((label-chars (string-to-list labels)))
         (mapconcat #'char-to-string
@@ -790,8 +853,10 @@ Returns the label character if it's a jump, nil otherwise."
     (let ((all-matches (flash-emacs--search-pattern pattern)))
       (when all-matches
         ;; Filter labels to avoid conflicts with search pattern
-        (let* ((filtered-label-chars (flash-emacs--filter-labels-for-pattern 
-                                     all-labels pattern windows))
+        ;; Check conflicts in all buffers that have matches, not just windows
+        (let* ((match-buffers (delete-dups (mapcar (lambda (match) (plist-get match :buffer)) all-matches)))
+               (filtered-label-chars (flash-emacs--filter-labels-for-matches 
+                                     all-labels pattern match-buffers))
                (filtered-labels (mapconcat #'char-to-string filtered-label-chars ""))
                (labeled-matches (flash-emacs--assign-labels all-matches filtered-labels 
                                                            current-window current-point)))
