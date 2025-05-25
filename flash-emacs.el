@@ -100,6 +100,59 @@
 
 ;;; Label assignment
 
+(defun flash-emacs--create-skip-pattern (search-pattern)
+  "Create a skip pattern to avoid label conflicts with search continuation.
+This pattern matches the search pattern followed by any character."
+  (when (and search-pattern (> (length search-pattern) 0))
+    (concat (regexp-quote search-pattern) ".")))
+
+(defun flash-emacs--find-conflicting-labels (search-pattern labels window)
+  "Find labels that would conflict with continuing the search pattern.
+Returns a list of labels to exclude."
+  (let ((skip-pattern (flash-emacs--create-skip-pattern search-pattern))
+        (conflicting-labels '()))
+    (when skip-pattern
+      (with-current-buffer (window-buffer window)
+        (save-excursion
+          (goto-char (point-min))
+          (while (re-search-forward skip-pattern nil t)
+            (let* ((match-end (match-end 0))
+                   (following-char (buffer-substring-no-properties 
+                                   (1- match-end) match-end)))
+              ;; Check if this following character is in our labels
+              (when (and following-char 
+                        (cl-find following-char labels :test #'string=))
+                (push following-char conflicting-labels)))))))
+    (delete-dups conflicting-labels)))
+
+(defun flash-emacs--filter-labels-for-pattern (labels search-pattern windows)
+  "Filter out labels that would conflict with search pattern continuation."
+  (if (or (not search-pattern) (= (length search-pattern) 0))
+      labels
+    (let ((conflicting-labels '()))
+      ;; Collect conflicting labels from all windows
+      (dolist (window windows)
+        (when (window-live-p window)
+          (setq conflicting-labels 
+                (append conflicting-labels 
+                        (flash-emacs--find-conflicting-labels search-pattern 
+                                                             (mapcar #'char-to-string 
+                                                                    (string-to-list labels)) 
+                                                             window)))))
+      ;; Remove conflicting labels and their case variants
+      (let ((label-chars (string-to-list labels)))
+        (mapconcat #'char-to-string
+                   (cl-remove-if (lambda (label-char)
+                                   (let ((label-str (char-to-string label-char)))
+                                     (or (cl-find label-str conflicting-labels :test #'string=)
+                                         ;; Also remove the opposite case
+                                         (cl-find (if (= label-char (upcase label-char))
+                                                     (downcase label-str)
+                                                   (upcase label-str))
+                                                 conflicting-labels :test #'string=))))
+                                 label-chars)
+                   "")))))
+
 (defun flash-emacs--distance-from-cursor (match current-point)
   "Calculate distance of MATCH from cursor at CURRENT-POINT."
   (let ((match-pos (plist-get match :pos)))
@@ -112,17 +165,18 @@
           (< (flash-emacs--distance-from-cursor a current-point)
              (flash-emacs--distance-from-cursor b current-point)))))
 
-(defun flash-emacs--assign-labels (matches labels current-point)
-  "Assign single-character labels to MATCHES."
-  (let* ((sorted-matches (flash-emacs--sort-matches matches current-point))
-         (max-labels (length labels))
+(defun flash-emacs--assign-labels (matches labels current-point pattern windows)
+  "Assign single-character labels to MATCHES, filtering out conflicting labels."
+  (let* ((filtered-labels (flash-emacs--filter-labels-for-pattern labels pattern windows))
+         (sorted-matches (flash-emacs--sort-matches matches current-point))
+         (max-labels (length filtered-labels))
          (labeled-matches '())
          (label-index 0))
     
     ;; Assign labels to closest matches
     (dolist (match sorted-matches)
       (when (< label-index max-labels)
-        (plist-put match :label (substring labels label-index (1+ label-index)))
+        (plist-put match :label (substring filtered-labels label-index (1+ label-index)))
         (setq label-index (1+ label-index))
         (push match labeled-matches)))
     
@@ -242,7 +296,10 @@
               
               ;; Update search results
               (setq matches (flash-emacs--search-pattern pattern))
-              (setq labeled-matches (flash-emacs--assign-labels matches flash-emacs-labels (point)))
+              (let ((windows (if flash-emacs-multi-window
+                               (window-list)
+                             (list (selected-window)))))
+                (setq labeled-matches (flash-emacs--assign-labels matches flash-emacs-labels (point) pattern windows)))
               (flash-emacs--show-overlays matches labeled-matches))))
       
       ;; Cleanup
