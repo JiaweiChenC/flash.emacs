@@ -51,6 +51,12 @@
   :type 'string
   :group 'flash-emacs)
 
+(defcustom flash-emacs-uppercase-labels t
+  "Whether to use uppercase labels after lowercase ones are exhausted.
+When t, after using all lowercase labels, uppercase versions will be used."
+  :type 'boolean
+  :group 'flash-emacs)
+
 (defcustom flash-emacs-search-mode 'exact
   "Search mode for pattern matching.
 - exact: exact string match
@@ -132,6 +138,13 @@
 (defun flash-emacs--set-matches (state matches)
   "Set the matches in STATE to MATCHES."
   (plist-put state :matches matches))
+
+(defun flash-emacs--get-all-labels (state)
+  "Get all available labels including uppercase if enabled."
+  (let ((base-labels (plist-get state :labels)))
+    (if flash-emacs-uppercase-labels
+        (concat base-labels (upcase base-labels))
+      base-labels)))
 
 ;;; Search functions
 
@@ -235,11 +248,17 @@ Returns a list of labels to exclude."
                                                              (mapcar #'char-to-string 
                                                                     (string-to-list labels)) 
                                                              window)))))
-      ;; Remove conflicting labels
+      ;; Remove conflicting labels and their case variants
       (let ((label-chars (string-to-list labels)))
         (mapconcat #'char-to-string
                    (cl-remove-if (lambda (label-char)
-                                   (cl-find (char-to-string label-char) conflicting-labels :test #'string=))
+                                   (let ((label-str (char-to-string label-char)))
+                                     (or (cl-find label-str conflicting-labels :test #'string=)
+                                         ;; Also remove the opposite case
+                                         (cl-find (if (= label-char (upcase label-char))
+                                                     (downcase label-str)
+                                                   (upcase label-str))
+                                                 conflicting-labels :test #'string=))))
                                  label-chars)
                    "")))))
 
@@ -322,8 +341,7 @@ Returns the label character if it's a jump, nil otherwise."
         (pos (plist-get match :pos)))
     (select-window window)
     (goto-char pos)
-    (push-mark)  ; Add to mark ring
-    (message "Jumped to: %s" (plist-get match :text))))
+    (push-mark)))  ; Add to mark ring, but don't show message
 
 (defun flash-emacs--update-search (state)
   "Update search results for the current pattern in STATE."
@@ -331,7 +349,7 @@ Returns the label character if it's a jump, nil otherwise."
          (matches (flash-emacs--search-pattern pattern))
          (current-window (plist-get state :current-window))
          (current-point (plist-get state :start-point))
-         (all-labels (plist-get state :labels))
+         (all-labels (flash-emacs--get-all-labels state))
          (windows (if flash-emacs-multi-window
                      (window-list)
                    (list (selected-window)))))
@@ -351,8 +369,8 @@ Returns the label character if it's a jump, nil otherwise."
 Returns nil to exit, t to continue."
   (let* ((current-pattern (flash-emacs--get-pattern state))
          (prompt (if (> (length current-pattern) 0)
-                    (format "Flash [%s]: " current-pattern)
-                  "Flash: "))
+                    (format "%s: " current-pattern)
+                  ": "))
          (char (read-char-exclusive prompt))
          (matches (flash-emacs--get-matches state)))
     

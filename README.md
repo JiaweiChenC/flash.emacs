@@ -6,10 +6,12 @@ An Emacs implementation of flash.nvim's standalone jump functionality, providing
 
 - **Multi-character search patterns**: Type multiple characters to narrow down matches progressively
 - **Smart label assignment**: Labels are assigned based on distance from cursor and window priority
+- **Uppercase labels support**: After lowercase labels are exhausted, uppercase letters are used
 - **Multi-window support**: Search and jump across all visible windows (configurable)
 - **Visual feedback**: Highlighted matches with overlay labels
 - **Incremental search**: Real-time updates as you type
 - **Intelligent conflict avoidance**: Prevents label conflicts with search pattern continuation
+- **Clean interface**: Simplified prompts showing only the search pattern and silent jumping
 - **Customizable appearance**: Configurable faces and label characters
 - **Minor mode integration**: Easy to enable/disable with key bindings
 
@@ -72,6 +74,15 @@ Flash-emacs supports building search patterns with multiple characters, just lik
 2. **Label Assignment**: Once matches are found, labels are assigned to each match
 3. **Jump Execution**: Type a label character to jump to that match
 
+### Smart Label Assignment
+
+Flash-emacs uses an intelligent label assignment system:
+
+1. **Lowercase first**: Initial matches get lowercase labels: `a`, `s`, `d`, `f`, `g`, etc.
+2. **Uppercase when needed**: When lowercase labels are exhausted, uppercase letters are used: `A`, `S`, `D`, `F`, `G`, etc.
+3. **Priority order**: Labels are assigned based on distance from cursor and window priority
+4. **Conflict avoidance**: Labels that would conflict with search continuation are automatically excluded
+
 ### Example Workflow
 
 ```
@@ -79,12 +90,17 @@ Buffer content: "test testing tester tests testament tea team"
 
 1. Press C-c j (start flash jump)
 2. Type 'te'
+   - Prompt shows: "te: "
    - Matches: test, testing, tester, tests, testament, tea, team
    - Labels assigned: d, f, g, h, j, k, l (note: 'a' and 's' excluded)
    - Why excluded? Because 'tea' and 'tes' exist in text
-3. Type 'd' → jumps to first match with label 'd'
+3. Type 'd' → jumps silently to first match with label 'd'
    OR
-   Type 'a' → searches for 'tea' (extends pattern)
+   Type 'a' → searches for 'tea' (extends pattern, prompt shows "tea: ")
+
+With many matches:
+1. First 26 matches get lowercase: a, s, d, f, g, h, j, k, l, q, w, e, r, t, y, u, i, o, p, z, x, c, v, b, n, m
+2. Additional matches get uppercase: A, S, D, F, G, H, J, K, L, Q, W, E, R, T, Y, U, I, O, P, Z, X, C, V, B, N, M
 ```
 
 ## Usage
@@ -105,6 +121,9 @@ Buffer content: "test testing tester tests testament tea team"
 ```elisp
 ;; Customize label characters (default: "asdfghjklqwertyuiopzxcvbnm")
 (setq flash-emacs-labels "asdfghjkl")
+
+;; Enable/disable uppercase labels (default: t)
+(setq flash-emacs-uppercase-labels nil)
 
 ;; Enable/disable multi-window search (default: t)
 (setq flash-emacs-multi-window nil)

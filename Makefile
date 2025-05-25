@@ -12,7 +12,9 @@ OBJECTS = $(SOURCES:.el=.elc)
 TEST_FILES = tests/test-functionality.el \
              tests/test-multichar.el \
              tests/test-label-conflicts.el \
-             tests/test-complete-functionality.el
+             tests/test-uppercase-labels.el \
+             tests/test-complete-functionality.el \
+             tests/test-prompt-changes.el
 
 # Package files
 PACKAGE_FILES = $(SOURCES) \
