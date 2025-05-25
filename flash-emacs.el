@@ -154,21 +154,9 @@ When nil, jumping will move the cursor and exit visual mode."
 (defun flash-emacs--evil-extend-selection (target-pos)
   "Extend evil visual selection to TARGET-POS."
   (when (and (flash-emacs--evil-visual-state-p) flash-emacs-evil-visual-extend)
-    (let ((visual-type (flash-emacs--evil-visual-type)))
-      (cond
-       ;; Character-wise visual selection
-       ((eq visual-type 'char)
-        (goto-char target-pos))
-       ;; Line-wise visual selection
-       ((eq visual-type 'line)
-        (goto-char target-pos)
-        (beginning-of-line))
-       ;; Block-wise visual selection
-       ((eq visual-type 'block)
-        (goto-char target-pos))
-       ;; Default: treat as character-wise
-       (t
-        (goto-char target-pos))))))
+    ;; Simply move cursor to target position
+    ;; Evil-mode will automatically extend the selection appropriately
+    (goto-char target-pos)))
 
 ;;; State management
 
@@ -459,7 +447,7 @@ Returns the label character if it's a jump, nil otherwise."
       (evil-exit-visual-state)
       (goto-char pos))
      
-     ;; Normal jump
+     ;; Normal jump - always position cursor at match
      (t
       (goto-char pos)))
     
