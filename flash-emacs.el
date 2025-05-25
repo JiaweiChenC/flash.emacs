@@ -275,9 +275,7 @@ MAX-MATCHES limits the number of matches for performance."
   "Check if current buffer is any kind of popup buffer."
   (or (flash-emacs--is-doom-popup-buffer-p)
       ;; Check for other popup indicators
-      (and (boundp 'popper-popup-status) popper-popup-status)
-      ;; Check if buffer is not displayed in selected window
-      (not (eq (current-buffer) (window-buffer (selected-window))))))
+      (and (boundp 'popper-popup-status) popper-popup-status)))
 
 (defun flash-emacs--search-in-buffer (pattern buffer window &optional max-matches)
   "Search for PATTERN in BUFFER and return list of matches.
@@ -337,59 +335,50 @@ Optimized with early termination and smart match limiting."
                     (list (selected-window))))
           (searched-buffers '())
           (current-buffer (current-buffer))
-          (max-useful-matches 150)) ; Reasonable limit for performance
+          (max-useful-matches 300)) ; Higher limit to ensure cross-buffer search works
       
-      ;; Handle batch mode specially
-      (if noninteractive
-          (let ((case-fold-search (not flash-emacs-case-sensitive)))
-            (save-excursion
-              (goto-char (point-min))
-              (let ((search-func (if (eq flash-emacs-search-mode 'regex)
-                                    #'re-search-forward
-                                  #'search-forward)))
-                (while (and (funcall search-func pattern nil t)
-                           (< (length matches) max-useful-matches))
-                  (let ((match-start (match-beginning 0))
-                        (match-end (match-end 0)))
-                    (push (list :pos match-start
-                               :end-pos match-end
-                               :window (selected-window)
-                               :buffer (current-buffer)
-                               :text (buffer-substring-no-properties match-start match-end))
-                          matches))))))
-        
-        ;; Interactive mode: search both windows AND popup buffers with smart prioritization
-        (progn
-          ;; First, search current buffer more thoroughly
-          (let ((current-window (selected-window)))
-            (when (window-live-p current-window)
-              (push current-buffer searched-buffers)
-              (setq matches (append matches 
-                                   (flash-emacs--search-in-window pattern current-window)))))
-          
-          ;; Then search other visible windows with limited matches per window
-          (let ((matches-per-window (max 10 (/ max-useful-matches (length windows)))))
-            (dolist (window windows)
-              (when (and (window-live-p window)
-                        (not (eq window (selected-window)))
-                        (< (length matches) max-useful-matches))
-                (let ((buffer (window-buffer window)))
-                  (unless (member buffer searched-buffers)
-                    (push buffer searched-buffers)
+      ;; Always use unified search (both interactive and batch mode)
+      ;; This ensures consistent behavior in tests and real usage
+      (progn
+        ;; First, search ALL visible windows (including current)
+        (let ((matches-per-window (max 10 (/ max-useful-matches (length windows)))))
+          (dolist (window windows)
+            (when (and (window-live-p window)
+                      (< (length matches) max-useful-matches))
+              (let ((buffer (window-buffer window)))
+                (unless (member buffer searched-buffers)
+                  (push buffer searched-buffers)
+                  ;; Give current window unlimited matches, others limited
+                  (let ((limit (if (eq window (selected-window))
+                                  max-useful-matches
+                                matches-per-window)))
                     (setq matches (append matches 
                                          (flash-emacs--search-in-window 
-                                          pattern window matches-per-window))))))))
-          
-          ;; Finally, search popup buffers with even more limited matches
-          (when (< (length matches) max-useful-matches)
-            (let ((popup-matches-limit (max 5 (/ (- max-useful-matches (length matches)) 
-                                               (max 1 (length (flash-emacs--get-popup-buffers)))))))
-              (dolist (popup-buffer (flash-emacs--get-popup-buffers))
-                (when (and (< (length matches) max-useful-matches)
-                          (not (member popup-buffer searched-buffers)))
-                  (setq matches (append matches 
-                                       (flash-emacs--search-in-buffer 
-                                        pattern popup-buffer nil popup-matches-limit)))))))))
+                                          pattern window limit)))))))))
+        
+        ;; Then search ALL popup buffers (including current if it's a popup)
+        (when (< (length matches) max-useful-matches)
+          (let ((popup-matches-limit 20)) ; Fixed reasonable limit per popup buffer
+            (dolist (popup-buffer (flash-emacs--get-popup-buffers))
+              (when (and (< (length matches) max-useful-matches)
+                        (not (member popup-buffer searched-buffers)))
+                (setq matches (append matches 
+                                     (flash-emacs--search-in-buffer 
+                                      pattern popup-buffer nil popup-matches-limit)))))))
+        
+        ;; Finally, if we're in a popup buffer, also search regular buffers that might not be visible
+        (when (and (flash-emacs--is-popup-buffer-p)
+                  (< (length matches) max-useful-matches))
+          (let ((regular-buffer-limit 10))
+            (dolist (buffer (buffer-list))
+              (when (and (< (length matches) max-useful-matches)
+                        (buffer-live-p buffer)
+                        (not (member buffer searched-buffers)))
+                (let ((is-popup (with-current-buffer buffer (flash-emacs--is-popup-buffer-p))))
+                  (unless is-popup
+                    (setq matches (append matches 
+                                         (flash-emacs--search-in-buffer 
+                                          pattern buffer nil regular-buffer-limit))))))))))
       
       (nreverse matches))))
 
@@ -778,9 +767,9 @@ Returns the label character if it's a jump, nil otherwise."
 
 (defun flash-emacs--maybe-clear-caches (pattern current-point)
   "Clear caches if pattern or cursor position changed significantly."
-  (when (or (not (equal pattern flash-emacs--last-search-pattern))
-            (not (equal current-point flash-emacs--last-cursor-position)))
-    ;; Clear distance cache when cursor moves or pattern changes
+  (when (not (equal pattern flash-emacs--last-search-pattern))
+    ;; Only clear distance cache when pattern changes, not cursor position
+    ;; This allows better caching while maintaining correctness
     (setq flash-emacs--distance-cache nil)
     (setq flash-emacs--last-search-pattern pattern)
     (setq flash-emacs--last-cursor-position current-point)))
@@ -927,4 +916,4 @@ In evil visual mode, jumping will extend the selection to the target."
 
 (provide 'flash-emacs)
 
-;;; flash-emacs.el ends here 
+;;; flash-emacs.el ends here
