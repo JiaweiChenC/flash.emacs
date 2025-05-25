@@ -2,18 +2,6 @@
 
 An Emacs implementation of flash.nvim's standalone jump functionality, providing fast and intuitive navigation within buffers using incremental search and smart label assignment.
 
-## Features
-
-- **Multi-character search patterns**: Type multiple characters to narrow down matches progressively
-- **Smart label assignment**: Labels are assigned based on distance from cursor and window priority
-- **Uppercase labels support**: After lowercase labels are exhausted, uppercase letters are used
-- **Multi-window support**: Search and jump across all visible windows (configurable)
-- **Visual feedback**: Highlighted matches with overlay labels
-- **Incremental search**: Real-time updates as you type
-- **Intelligent conflict avoidance**: Prevents label conflicts with search pattern continuation
-- **Clean interface**: Simplified prompts showing only the search pattern and silent jumping
-- **Customizable appearance**: Configurable faces and label characters
-
 ## Installation
 
 ### Package Repositories
@@ -40,14 +28,6 @@ Flash-emacs is available from the following package repositories:
 (use-package flash-emacs
   :ensure t
   :bind ("C-c j" . flash-emacs-jump))
-```
-
-#### straight.el
-
-```elisp
-(straight-use-package
- '(flash-emacs :type git :host github :repo "flash-emacs/flash-emacs"))
-(global-set-key (kbd "C-c j") #'flash-emacs-jump)
 ```
 
 ## Quick Start
@@ -102,13 +82,6 @@ With many matches:
 ```
 
 ## Usage
-
-### Basic Usage
-
-1. **Start flash jump**: `C-c j` (or `M-x flash-emacs-jump`)
-2. **Type search pattern**: Enter characters to build your search
-3. **Jump to match**: Type a label character to jump to that position
-4. **Cancel**: Press `C-g` or `ESC` to cancel
 
 ### Customization
 
