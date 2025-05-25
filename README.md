@@ -3,6 +3,10 @@
 Flash.nvim-like jump navigation for Emacs with full evil-mode support.
 
 
+## demo 
+
+![demo](./flash-emacs-demo.gif)
+
 <!-- ### Key Features -->
 
 <!-- - **Multi-character search patterns** with progressive narrowing -->
@@ -212,46 +216,30 @@ Flash-emacs only shows labels for content visible in each window:
 
 This prevents overwhelming numbers of labels and improves performance, especially in large files.
 
-## Testing
+<!-- ## Testing -->
 
-Run the test suite to verify functionality:
+<!-- Run the test suite to verify functionality: -->
 
-```bash
-# Run basic functionality tests
-emacs --batch -l tests/test-basic-functionality.el
+<!-- ```bash -->
+<!-- # Run basic functionality tests -->
+<!-- emacs --batch -l tests/test-basic-functionality.el -->
 
-# Run complete integration test
-emacs --batch -l tests/test-integration-complete.el
+<!-- # Run complete integration test -->
+<!-- emacs --batch -l tests/test-integration-complete.el -->
 
-# Run evil-mode integration tests
-emacs --batch -l tests/test-evil-integration.el
+<!-- # Run evil-mode integration tests -->
+<!-- emacs --batch -l tests/test-evil-integration.el -->
 
-# Interactive demos
-emacs -l tests/demo-complete.el
-emacs -l tests/demo-evil-complete.el
-```
+<!-- # Interactive demos -->
+<!-- emacs -l tests/demo-complete.el -->
+<!-- emacs -l tests/demo-evil-complete.el -->
+<!-- ``` -->
 
-See `tests/README.md` for a complete list of available tests and demos.
+<!-- See `tests/README.md` for a complete list of available tests and demos. -->
 
-## Comparison with flash.nvim
+## TODO 
 
-Flash-emacs provides feature parity with flash.nvim:
-
-| Feature | flash.nvim | flash-emacs |
-|---------|------------|-------------|
-| Multi-character search | ✓ | ✓ |
-| Smart label assignment | ✓ | ✓ |
-| Conflict avoidance | ✓ | ✓ |
-| Window-aware search | ✓ | ✓ |
-| Visual mode support | ✓ | ✓ |
-| Operator-pending mode | ✓ | ✓ |
-| Multi-window search | ✓ | ✓ |
-| Incremental search | ✓ | ✓ |
-| Customizable labels | ✓ | ✓ |
-
-## License
-
-This project is licensed under the GPL-3.0 License - see the LICENSE file for details.
+- treesitter feature? 
 
 ## Acknowledgments
 
