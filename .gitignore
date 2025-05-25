@@ -1,0 +1,49 @@
+# Byte-compiled / optimized / DLL files
+*.elc
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+
+# Distribution / packaging
+dist/
+build/
+*.tar.gz
+*.zip
+
+# Emacs
+*~
+\#*\#
+.\#*
+.DS_Store
+*.tmp
+*.bak
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Logs
+*.log
+
+# Runtime data
+pids
+*.pid
+*.seed
+
+# Coverage directory used by tools like istanbul
+coverage/
+
+# Dependency directories
+node_modules/
+
+# Optional npm cache directory
+.npm
+
+# Optional REPL history
+.node_repl_history 
