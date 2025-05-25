@@ -2,21 +2,18 @@
 
 Flash.nvim-like jump navigation for Emacs with full evil-mode support.
 
-## Overview
 
-Flash-emacs provides fast, accurate jump navigation similar to flash.nvim. Type a search pattern, see labeled matches, then jump instantly using single-character labels.
+<!-- ### Key Features -->
 
-### Key Features
-
-- **Multi-character search patterns** with progressive narrowing
-- **Smart label assignment** prioritizing current window and distance  
-- **Intelligent conflict avoidance** between search and jump labels
-- **Window-aware search** - only shows matches in visible content
-- **Multi-window support** for searching across visible windows
-- **Evil-mode integration** with visual selection support
-- **Visual feedback** with highlighted matches and overlay labels
-- **Incremental search** with real-time updates
-- **Customizable appearance** and behavior
+<!-- - **Multi-character search patterns** with progressive narrowing -->
+<!-- - **Smart label assignment** prioritizing current window and distance   -->
+<!-- - **Intelligent conflict avoidance** between search and jump labels -->
+<!-- - **Window-aware search** - only shows matches in visible content -->
+<!-- - **Multi-window support** for searching across visible windows -->
+<!-- - **Evil-mode integration** with visual selection support -->
+<!-- - **Visual feedback** with highlighted matches and overlay labels -->
+<!-- - **Incremental search** with real-time updates -->
+<!-- - **Customizable appearance** and behavior -->
 
 ## Installation
 
