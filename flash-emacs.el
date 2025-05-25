@@ -23,6 +23,7 @@
 ;; - Multi-window support for searching across visible windows
 ;; - Visual feedback with highlighted matches and overlay labels
 ;; - Incremental search with real-time updates
+;; - Evil-mode visual selection support
 ;; - Customizable appearance and behavior
 ;;
 ;; Usage:
@@ -30,6 +31,12 @@
 ;;
 ;; To bind to a key (recommended):
 ;;   (global-set-key (kbd "C-c j") #'flash-emacs-jump)
+;;
+;; Evil-mode integration:
+;;   (with-eval-after-load 'evil
+;;     (define-key evil-normal-state-map (kbd "s") #'flash-emacs-jump)
+;;     (define-key evil-visual-state-map (kbd "s") #'flash-emacs-jump)
+;;     (define-key evil-operator-state-map (kbd "s") #'flash-emacs-jump))
 ;;
 ;; For more information, see the README.md file or visit:
 ;; https://github.com/flash-emacs/flash-emacs
@@ -86,6 +93,13 @@ When t, after using all lowercase labels, uppercase versions will be used."
   :type 'integer
   :group 'flash-emacs)
 
+(defcustom flash-emacs-evil-visual-extend t
+  "Whether to extend evil visual selection when jumping.
+When t, jumping in visual mode will extend the selection to the target.
+When nil, jumping will move the cursor and exit visual mode."
+  :type 'boolean
+  :group 'flash-emacs)
+
 ;;; Faces
 
 (defface flash-emacs-label
@@ -111,6 +125,51 @@ When t, after using all lowercase labels, uppercase versions will be used."
 (defvar flash-emacs--overlays nil
   "List of active overlays.")
 
+;;; Evil-mode integration
+
+(defun flash-emacs--evil-available-p ()
+  "Check if evil-mode is available and loaded."
+  (and (featurep 'evil) (bound-and-true-p evil-mode)))
+
+(defun flash-emacs--evil-visual-state-p ()
+  "Check if we're currently in evil visual state."
+  (and (flash-emacs--evil-available-p)
+       (eq evil-state 'visual)))
+
+(defun flash-emacs--evil-operator-state-p ()
+  "Check if we're currently in evil operator state."
+  (and (flash-emacs--evil-available-p)
+       (eq evil-state 'operator)))
+
+(defun flash-emacs--evil-visual-type ()
+  "Get the current evil visual selection type."
+  (when (flash-emacs--evil-visual-state-p)
+    evil-visual-selection))
+
+(defun flash-emacs--evil-visual-range ()
+  "Get the current evil visual selection range as (start . end)."
+  (when (flash-emacs--evil-visual-state-p)
+    (cons evil-visual-beginning evil-visual-end)))
+
+(defun flash-emacs--evil-extend-selection (target-pos)
+  "Extend evil visual selection to TARGET-POS."
+  (when (and (flash-emacs--evil-visual-state-p) flash-emacs-evil-visual-extend)
+    (let ((visual-type (flash-emacs--evil-visual-type)))
+      (cond
+       ;; Character-wise visual selection
+       ((eq visual-type 'char)
+        (goto-char target-pos))
+       ;; Line-wise visual selection
+       ((eq visual-type 'line)
+        (goto-char target-pos)
+        (beginning-of-line))
+       ;; Block-wise visual selection
+       ((eq visual-type 'block)
+        (goto-char target-pos))
+       ;; Default: treat as character-wise
+       (t
+        (goto-char target-pos))))))
+
 ;;; State management
 
 (defun flash-emacs--create-state ()
@@ -120,7 +179,10 @@ When t, after using all lowercase labels, uppercase versions will be used."
         :labels flash-emacs-labels
         :current-window (selected-window)
         :start-point (point)
-        :label-index 0))
+        :label-index 0
+        :evil-visual-state (flash-emacs--evil-visual-state-p)
+        :evil-visual-range (flash-emacs--evil-visual-range)
+        :evil-visual-type (flash-emacs--evil-visual-type)))
 
 (defun flash-emacs--get-pattern (state)
   "Get the current search pattern from STATE."
@@ -151,7 +213,7 @@ When t, after using all lowercase labels, uppercase versions will be used."
   "Search for PATTERN in WINDOW and return list of matches."
   (let ((matches '())
         (case-fold-search (not flash-emacs-case-sensitive)))
-    (with-selected-window window
+    (with-current-buffer (window-buffer window)
       (save-excursion
         (goto-char (point-min))
         (let ((search-func (if (eq flash-emacs-search-mode 'regex)
@@ -175,11 +237,31 @@ When t, after using all lowercase labels, uppercase versions will be used."
           (windows (if flash-emacs-multi-window
                       (window-list)
                     (list (selected-window)))))
-      (dolist (window windows)
-        (when (window-live-p window)
-          (setq matches (append matches 
-                               (flash-emacs--search-in-window pattern window)))))
-      matches)))
+      ;; In batch mode or when the selected window doesn't show current buffer,
+      ;; search in current buffer directly
+      (if (or noninteractive 
+              (not (eq (current-buffer) (window-buffer (selected-window)))))
+          (let ((case-fold-search (not flash-emacs-case-sensitive)))
+            (save-excursion
+              (goto-char (point-min))
+              (let ((search-func (if (eq flash-emacs-search-mode 'regex)
+                                    #'re-search-forward
+                                  #'search-forward)))
+                (while (and (funcall search-func pattern nil t)
+                           (< (length matches) flash-emacs-max-matches))
+                  (let ((match-start (match-beginning 0))
+                        (match-end (match-end 0)))
+                    (push (list :pos match-start
+                               :end-pos match-end
+                               :window (selected-window)
+                               :text (buffer-substring-no-properties match-start match-end))
+                          matches))))))
+        ;; Normal interactive mode - search in windows
+        (dolist (window windows)
+          (when (window-live-p window)
+            (setq matches (append matches 
+                                 (flash-emacs--search-in-window pattern window))))))
+      (nreverse matches))))
 
 ;;; Label assignment
 
@@ -220,7 +302,10 @@ Returns a list of labels to exclude."
   (let ((skip-pattern (flash-emacs--create-skip-pattern search-pattern))
         (conflicting-labels '()))
     (when skip-pattern
-      (with-selected-window window
+      (with-current-buffer (if (or noninteractive 
+                                  (not (eq (current-buffer) (window-buffer window))))
+                              (current-buffer)
+                            (window-buffer window))
         (save-excursion
           (goto-char (point-min))
           (while (re-search-forward skip-pattern nil t)
@@ -334,13 +419,34 @@ Returns the label character if it's a jump, nil otherwise."
                      matches)
         label-char))))
 
-(defun flash-emacs--jump-to-match (match)
-  "Jump to the position of MATCH."
+(defun flash-emacs--jump-to-match (match state)
+  "Jump to the position of MATCH, handling evil visual mode appropriately."
   (let ((window (plist-get match :window))
-        (pos (plist-get match :pos)))
-    (select-window window)
-    (goto-char pos)
-    (push-mark)))  ; Add to mark ring, but don't show message
+        (pos (plist-get match :pos))
+        (was-visual (plist-get state :evil-visual-state)))
+    
+    ;; Switch to target window if needed
+    (unless (eq window (selected-window))
+      (select-window window))
+    
+    ;; Handle evil visual mode
+    (cond
+     ;; If we were in evil visual mode and should extend selection
+     ((and was-visual (flash-emacs--evil-available-p) flash-emacs-evil-visual-extend)
+      (flash-emacs--evil-extend-selection pos))
+     
+     ;; If we were in evil visual mode but should not extend, exit visual mode
+     ((and was-visual (flash-emacs--evil-available-p) (not flash-emacs-evil-visual-extend))
+      (evil-exit-visual-state)
+      (goto-char pos))
+     
+     ;; Normal jump
+     (t
+      (goto-char pos)))
+    
+    ;; Add to mark ring for non-evil or when not extending selection
+    (unless (and was-visual flash-emacs-evil-visual-extend)
+      (push-mark))))
 
 (defun flash-emacs--update-search (state)
   "Update search results for the current pattern in STATE."
@@ -382,7 +488,7 @@ Returns nil to exit, t to continue."
      ;; Enter - jump to first match
      ((= char 13)
       (when (car matches)
-        (flash-emacs--jump-to-match (car matches)))
+        (flash-emacs--jump-to-match (car matches) state))
       nil)
      
      ;; Backspace - remove last character
@@ -404,7 +510,7 @@ Returns nil to exit, t to continue."
             (progn
               (let ((target-match (flash-emacs--find-match-by-label potential-label matches)))
                 (when target-match
-                  (flash-emacs--jump-to-match target-match)))
+                  (flash-emacs--jump-to-match target-match state)))
               nil)
           ;; It's a regular character - add to search pattern
           (progn
@@ -426,7 +532,8 @@ Returns nil to exit, t to continue."
 ;;;###autoload
 (defun flash-emacs-jump ()
   "Start flash jump mode.
-Type characters to search, then use the displayed labels to jump."
+Type characters to search, then use the displayed labels to jump.
+In evil visual mode, jumping will extend the selection to the target."
   (interactive)
   (let ((state (flash-emacs--create-state)))
     (setq flash-emacs--state state)
@@ -464,6 +571,17 @@ Type characters to search, then use the displayed labels to jump."
       (message "Match at %d: label '%s'" 
                (plist-get match :pos) 
                (plist-get match :label)))))
+
+(defun flash-emacs--test-evil-integration ()
+  "Test evil-mode integration."
+  (interactive)
+  (message "Evil available: %s" (flash-emacs--evil-available-p))
+  (when (flash-emacs--evil-available-p)
+    (message "Evil state: %s" evil-state)
+    (message "Visual state: %s" (flash-emacs--evil-visual-state-p))
+    (when (flash-emacs--evil-visual-state-p)
+      (message "Visual type: %s" (flash-emacs--evil-visual-type))
+      (message "Visual range: %s" (flash-emacs--evil-visual-range)))))
 
 (provide 'flash-emacs)
 

@@ -1,110 +1,276 @@
 # Flash-Emacs
 
-An Emacs implementation of flash.nvim's standalone jump functionality, providing fast and intuitive navigation within buffers using incremental search and smart label assignment.
+Flash.nvim-like jump navigation for Emacs with full evil-mode support.
+
+## Overview
+
+Flash-emacs provides fast, accurate jump navigation similar to flash.nvim. Type a search pattern, see labeled matches, then jump instantly using single-character labels.
+
+### Key Features
+
+- **Multi-character search patterns** with progressive narrowing
+- **Smart label assignment** prioritizing current window and distance  
+- **Intelligent conflict avoidance** between search and jump labels
+- **Multi-window support** for searching across visible windows
+- **Evil-mode integration** with visual selection support
+- **Visual feedback** with highlighted matches and overlay labels
+- **Incremental search** with real-time updates
+- **Customizable appearance** and behavior
 
 ## Installation
 
-### Package Repositories
+### Manual Installation
 
-Flash-emacs is available from the following package repositories:
-
-#### Manual Installation
-
-1. Clone or download this repository:
-   ```bash
-   git clone https://github.com/flash-emacs/flash-emacs.git
-   ```
-
-2. Add to your Emacs configuration:
-   ```elisp
-   (add-to-list 'load-path "/path/to/flash-emacs")
-   (require 'flash-emacs)
-   (global-set-key (kbd "C-c j") #'flash-emacs-jump)  ; Bind to preferred key
-   ```
-
-#### use-package
+1. Download `flash-emacs.el` to your Emacs configuration directory
+2. Add to your init file:
 
 ```elisp
-(use-package flash-emacs
-  :ensure t
-  :bind ("C-c j" . flash-emacs-jump))
+(load-file "path/to/flash-emacs.el")
+(require 'flash-emacs)
 ```
 
-## Quick Start
+### Basic Key Binding
 
-1. **Install the package** using one of the methods above
-2. **Bind to a key**: `(global-set-key (kbd "C-c j") #'flash-emacs-jump)`
-3. **Start jumping**: Press `C-c j` or run `M-x flash-emacs-jump`
-4. **Type to search**: Enter characters to build your search pattern
-5. **Jump**: Type a label character to jump to that match
+```elisp
+(global-set-key (kbd "C-c j") #'flash-emacs-jump)
+```
 
-## How It Works
+## Evil-mode Integration
 
-### Multi-Character Search
-Flash-emacs supports building search patterns with multiple characters, just like flash.nvim:
+Flash-emacs provides comprehensive evil-mode integration that matches flash.nvim's behavior:
 
-1. **Pattern Building**: Type characters to build your search pattern
-   - `t` → finds all words starting with 't'
-   - `te` → narrows to words starting with 'te'
-   - `tes` → further narrows to words starting with 'tes'
-   - `test` → very specific matches for 'test'
+### Setup
 
-2. **Label Assignment**: Once matches are found, labels are assigned to each match
-3. **Jump Execution**: Type a label character to jump to that match
+```elisp
+(with-eval-after-load 'evil
+  (define-key evil-normal-state-map (kbd "s") #'flash-emacs-jump)
+  (define-key evil-visual-state-map (kbd "s") #'flash-emacs-jump)
+  (define-key evil-operator-state-map (kbd "s") #'flash-emacs-jump))
+```
 
-### Smart Label Assignment
+### Visual Mode Behavior
 
-Flash-emacs uses an intelligent label assignment system:
+When in evil visual mode, flash-emacs automatically:
 
-1. **Lowercase first**: Initial matches get lowercase labels: `a`, `s`, `d`, `f`, `g`, etc.
-2. **Uppercase when needed**: When lowercase labels are exhausted, uppercase letters are used: `A`, `S`, `D`, `F`, `G`, etc.
-3. **Priority order**: Labels are assigned based on distance from cursor and window priority
-4. **Conflict avoidance**: Labels that would conflict with search continuation are automatically excluded
+1. **Detects visual state** - Recognizes character, line, and block visual modes
+2. **Extends selection** - Jumping extends the selection to the target (configurable)
+3. **Preserves visual type** - Maintains character/line/block selection behavior
+4. **Handles multi-window** - Works across windows while preserving selection
 
-### Example Workflow
+#### Visual Selection Types
+
+- **Character-wise (`v`)** - Extends selection character by character
+- **Line-wise (`V`)** - Extends selection line by line, snapping to line boundaries  
+- **Block-wise (`C-v`)** - Extends rectangular selection
+
+### Operator-Pending Mode
+
+Flash-emacs works seamlessly with evil operators:
 
 ```
-Buffer content: "test testing tester tests testament tea team"
+d s [pattern] [label]  ; Delete to flash target
+c s [pattern] [label]  ; Change to flash target  
+y s [pattern] [label]  ; Yank to flash target
+```
 
-1. Press C-c j (start flash jump)
-2. Type 'te'
-   - Prompt shows: "te: "
-   - Matches: test, testing, tester, tests, testament, tea, team
-   - Labels assigned: d, f, g, h, j, k, l (note: 'a' and 's' excluded)
-   - Why excluded? Because 'tea' and 'tes' exist in text
-3. Type 'd' → jumps silently to first match with label 'd'
-   OR
-   Type 'a' → searches for 'tea' (extends pattern, prompt shows "tea: ")
+### Configuration
 
-With many matches:
-1. First 26 matches get lowercase: a, s, d, f, g, h, j, k, l, q, w, e, r, t, y, u, i, o, p, z, x, c, v, b, n, m
-2. Additional matches get uppercase: A, S, D, F, G, H, J, K, L, Q, W, E, R, T, Y, U, I, O, P, Z, X, C, V, B, N, M
+```elisp
+;; Extend selection when jumping in visual mode (default)
+(setq flash-emacs-evil-visual-extend t)
+
+;; Exit visual mode when jumping (vim-like behavior)
+(setq flash-emacs-evil-visual-extend nil)
 ```
 
 ## Usage
 
-### Customization
+### Basic Usage
+
+1. Press your flash-emacs key binding (e.g., `C-c j` or `s` in evil-mode)
+2. Type characters to search for a pattern
+3. See labeled matches appear in real-time
+4. Press a label character to jump instantly
+
+### Multi-character Search
+
+Flash-emacs supports progressive search refinement:
+
+```
+t      → Shows matches for "t"
+te     → Narrows to matches for "te"  
+tes    → Further narrows to "tes"
+test   → Final pattern "test"
+a      → If 'a' is a label, jumps to that match
+       → If 'a' is not a label, searches for "testa"
+```
+
+### Smart Label Conflict Avoidance
+
+The system intelligently avoids label conflicts:
+
+- For pattern "te", if text contains "tea" and "tes", labels 'a' and 's' are filtered out
+- Only "safe" labels that won't conflict with valid search continuations are assigned
+- This ensures unambiguous interaction between searching and jumping
+
+## Configuration
+
+### Customization Variables
 
 ```elisp
-;; Customize label characters (default: "asdfghjklqwertyuiopzxcvbnm")
-(setq flash-emacs-labels "asdfghjkl")
+;; Characters used as jump labels
+(setq flash-emacs-labels "asdfghjklqwertyuiopzxcvbnm")
 
-;; Enable/disable uppercase labels (default: t)
-(setq flash-emacs-uppercase-labels nil)
+;; Use uppercase labels after lowercase ones
+(setq flash-emacs-uppercase-labels t)
 
-;; Enable/disable multi-window search (default: t)
-(setq flash-emacs-multi-window nil)
+;; Search mode: 'exact or 'regex
+(setq flash-emacs-search-mode 'exact)
 
-;; Customize faces
-(set-face-attribute 'flash-emacs-match nil 
-                    :background "yellow" :foreground "black")
-(set-face-attribute 'flash-emacs-label nil 
-                    :background "red" :foreground "white" :weight 'bold)
+;; Search in all visible windows
+(setq flash-emacs-multi-window t)
 
-;; Case sensitivity (default: nil)
-(setq flash-emacs-case-sensitive t)
+;; Case sensitive search
+(setq flash-emacs-case-sensitive nil)
 
-;; Minimum pattern length before showing labels (default: 1)
-(setq flash-emacs-min-pattern-length 2)
+;; Minimum pattern length before showing labels
+(setq flash-emacs-min-pattern-length 1)
+
+;; Maximum number of matches to process
+(setq flash-emacs-max-matches 100)
+
+;; Evil visual selection behavior
+(setq flash-emacs-evil-visual-extend t)
 ```
+
+### Face Customization
+
+```elisp
+;; Customize label appearance
+(set-face-attribute 'flash-emacs-label nil
+                    :background "red" 
+                    :foreground "white" 
+                    :weight 'bold)
+
+;; Customize match highlighting
+(set-face-attribute 'flash-emacs-match nil
+                    :background "yellow" 
+                    :foreground "black")
+
+;; Customize current match
+(set-face-attribute 'flash-emacs-current nil
+                    :background "green" 
+                    :foreground "white" 
+                    :weight 'bold)
+```
+
+## Examples
+
+### Evil-mode Scenarios
+
+#### Character Visual Selection
+```
+1. Position cursor at start of word
+2. Press 'v' to enter character visual mode
+3. Press 's' (flash-emacs-jump)
+4. Type search pattern
+5. Press label to extend selection to target
+```
+
+#### Line Visual Selection  
+```
+1. Position cursor anywhere on line
+2. Press 'V' to enter line visual mode
+3. Press 's' (flash-emacs-jump)
+4. Type search pattern
+5. Press label to extend selection to target line
+```
+
+#### Operator + Flash
+```
+1. Press 'd' (delete operator)
+2. Press 's' (flash-emacs-jump)  
+3. Type search pattern
+4. Press label to delete from cursor to target
+```
+
+### Multi-window Navigation
+
+Flash-emacs works across all visible windows:
+
+1. Split windows with different buffers
+2. Use flash-emacs from any window
+3. See matches labeled in all windows
+4. Jump to any visible location instantly
+
+## Technical Details
+
+### Architecture
+
+- **State Management** - Tracks search pattern, matches, labels, and evil state
+- **Search Engine** - Supports exact and regex matching with conflict avoidance
+- **Label Assignment** - Smart prioritization by window and distance
+- **Visual Feedback** - Real-time overlays for matches and labels
+- **Evil Integration** - Deep integration with evil-mode states and selections
+
+### Performance
+
+- Efficient search algorithms with configurable match limits
+- Lazy evaluation and caching for responsive interaction
+- Optimized overlay management for smooth visual feedback
+
+### Compatibility
+
+- **Emacs Version** - Requires Emacs 26.1 or later
+- **Evil-mode** - Optional but recommended for vim-like experience
+- **Dependencies** - Only requires `cl-lib` (built-in)
+
+## Testing
+
+Run the test suite to verify functionality:
+
+```elisp
+;; Load and run basic tests
+(load-file "test-functionality.el")
+
+;; Test evil-mode integration
+(load-file "test-evil-integration.el")
+
+;; Interactive demos
+(load-file "demo.el")
+M-x demo-evil-integration
+```
+
+## Comparison with flash.nvim
+
+Flash-emacs provides feature parity with flash.nvim:
+
+| Feature | flash.nvim | flash-emacs |
+|---------|------------|-------------|
+| Multi-character search | ✓ | ✓ |
+| Smart label assignment | ✓ | ✓ |
+| Conflict avoidance | ✓ | ✓ |
+| Visual mode support | ✓ | ✓ |
+| Operator-pending mode | ✓ | ✓ |
+| Multi-window search | ✓ | ✓ |
+| Incremental search | ✓ | ✓ |
+| Customizable labels | ✓ | ✓ |
+
+## Contributing
+
+Contributions are welcome! Please:
+
+1. Test your changes thoroughly
+2. Add tests for new functionality  
+3. Update documentation as needed
+4. Follow existing code style
+
+## License
+
+This project is licensed under the GPL-3.0 License - see the LICENSE file for details.
+
+## Acknowledgments
+
+- Inspired by [flash.nvim](https://github.com/folke/flash.nvim) by folke
+- Built for the Emacs and evil-mode communities
 
