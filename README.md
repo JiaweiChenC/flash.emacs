@@ -215,44 +215,6 @@ Flash-emacs only shows labels for content visible in each window:
 
 This prevents overwhelming numbers of labels and improves performance, especially in large files.
 
-## Technical Details
-
-### Architecture
-
-- **State Management** - Tracks search pattern, matches, labels, and evil state
-- **Search Engine** - Supports exact and regex matching with conflict avoidance
-- **Label Assignment** - Smart prioritization by window and distance
-- **Visual Feedback** - Real-time overlays for matches and labels
-- **Evil Integration** - Deep integration with evil-mode states and selections
-
-### Performance
-
-- Efficient search algorithms with configurable match limits
-- Lazy evaluation and caching for responsive interaction
-- Optimized overlay management for smooth visual feedback
-
-### Compatibility
-
-- **Emacs Version** - Requires Emacs 26.1 or later
-- **Evil-mode** - Optional but recommended for vim-like experience
-- **Dependencies** - Only requires `cl-lib` (built-in)
-
-## Testing
-
-Run the test suite to verify functionality:
-
-```elisp
-;; Load and run basic tests
-(load-file "test-functionality.el")
-
-;; Test evil-mode integration
-(load-file "test-evil-integration.el")
-
-;; Interactive demos
-(load-file "demo.el")
-M-x demo-evil-integration
-```
-
 ## Comparison with flash.nvim
 
 Flash-emacs provides feature parity with flash.nvim:
@@ -269,15 +231,6 @@ Flash-emacs provides feature parity with flash.nvim:
 | Incremental search | ✓ | ✓ |
 | Customizable labels | ✓ | ✓ |
 
-## Contributing
-
-Contributions are welcome! Please:
-
-1. Test your changes thoroughly
-2. Add tests for new functionality  
-3. Update documentation as needed
-4. Follow existing code style
-
 ## License
 
 This project is licensed under the GPL-3.0 License - see the LICENSE file for details.
@@ -285,5 +238,4 @@ This project is licensed under the GPL-3.0 License - see the LICENSE file for de
 ## Acknowledgments
 
 - Inspired by [flash.nvim](https://github.com/folke/flash.nvim) by folke
-- Built for the Emacs and evil-mode communities
 
