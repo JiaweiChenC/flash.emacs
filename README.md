@@ -88,13 +88,13 @@ Buffer content: "test testing tester tests testament tea team"
 
 1. Press C-c j (start flash jump)
 2. Type 'te'
-   - Prompt shows: "te"
+   - Prompt shows: "te: "
    - Matches: test, testing, tester, tests, testament, tea, team
    - Labels assigned: d, f, g, h, j, k, l (note: 'a' and 's' excluded)
    - Why excluded? Because 'tea' and 'tes' exist in text
 3. Type 'd' → jumps silently to first match with label 'd'
    OR
-   Type 'a' → searches for 'tea' (extends pattern, prompt shows "tea")
+   Type 'a' → searches for 'tea' (extends pattern, prompt shows "tea: ")
 
 With many matches:
 1. First 26 matches get lowercase: a, s, d, f, g, h, j, k, l, q, w, e, r, t, y, u, i, o, p, z, x, c, v, b, n, m

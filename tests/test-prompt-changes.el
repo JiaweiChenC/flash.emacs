@@ -15,28 +15,28 @@
     (flash-emacs--set-pattern state "")
     (let* ((current-pattern (flash-emacs--get-pattern state))
            (prompt (if (> (length current-pattern) 0)
-                      current-pattern
-                    "")))
-      (cl-assert (string= prompt "") nil
-                "Empty pattern should show empty string"))
+                      (concat ":" current-pattern)
+                    ":")))
+      (cl-assert (string= prompt ":") nil
+                "Empty pattern should show ':'"))
     
     ;; Test with pattern
     (flash-emacs--set-pattern state "test")
     (let* ((current-pattern (flash-emacs--get-pattern state))
            (prompt (if (> (length current-pattern) 0)
-                      current-pattern
-                    "")))
-      (cl-assert (string= prompt "test") nil
-                "Pattern 'test' should show 'test'"))
+                      (concat ":" current-pattern)
+                    ":")))
+      (cl-assert (string= prompt ":test") nil
+                "Pattern 'test' should show ':test'"))
     
     ;; Test with single character
     (flash-emacs--set-pattern state "t")
     (let* ((current-pattern (flash-emacs--get-pattern state))
            (prompt (if (> (length current-pattern) 0)
-                      current-pattern
-                    "")))
-      (cl-assert (string= prompt "t") nil
-                "Pattern 't' should show 't'"))))
+                      (concat ":" current-pattern)
+                    ":")))
+      (cl-assert (string= prompt ":t") nil
+                "Pattern 't' should show ':t'"))))
 
 (defun test-silent-jump ()
   "Test that jumping doesn't produce messages."
@@ -68,9 +68,9 @@ apple banana cherry date
 hello world example text
 
 The prompt now shows:
-- Empty pattern: '' (empty)
-- With pattern 'te': 'te'
-- With pattern 'test': 'test'
+- Empty pattern: ': '
+- With pattern 'te': 'te: '
+- With pattern 'test': 'test: '
 
 No more 'Flash [pattern]: ' format!
 Also, jumping is now silent (no 'Jumped to: xxx' messages).

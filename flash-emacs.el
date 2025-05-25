@@ -368,8 +368,8 @@ Returns the label character if it's a jump, nil otherwise."
 Returns nil to exit, t to continue."
   (let* ((current-pattern (flash-emacs--get-pattern state))
          (prompt (if (> (length current-pattern) 0)
-                    current-pattern
-                  ""))
+                    (concat ":" current-pattern)
+                  ":"))
          (char (read-char-exclusive prompt))
          (matches (flash-emacs--get-matches state)))
     

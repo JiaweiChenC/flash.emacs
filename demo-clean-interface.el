@@ -21,7 +21,7 @@ NEW IMPROVEMENTS:
 
 BEFORE vs AFTER:
 Before: Flash [test]: 
-After:  test
+After:  test: 
 
 Before: Jumped to: content
 After:  (silent jump)
@@ -41,9 +41,9 @@ INSTRUCTIONS:
 
 1. Press C-c j to start flash jump
 2. Notice the clean prompt format:
-   - Empty: '' (empty)
-   - Pattern 'te': 'te'
-   - Pattern 'test': 'test'
+   - Empty: ': '
+   - Pattern 'te': 'te: '
+   - Pattern 'test': 'test: '
 
 3. Type characters to build your search pattern
 4. Use labels to jump (notice silent jumping)
@@ -86,13 +86,13 @@ Ready to try the clean interface!
   
   (message "NEW FORMAT:")
   (sit-for 1)
-  (message "'' (empty)")
+  (message ": ")
   (sit-for 1)
-  (message "t")
+  (message "t: ")
   (sit-for 1)
-  (message "te")
+  (message "te: ")
   (sit-for 1)
-  (message "test")
+  (message "test: ")
   (sit-for 2)
   
   (message "Much cleaner! Try the real thing with C-c j"))
