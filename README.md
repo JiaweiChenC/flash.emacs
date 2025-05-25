@@ -41,50 +41,6 @@ Flash.nvim-like jump navigation for Emacs with full evil-mode support.
 
 Flash-emacs provides comprehensive evil-mode integration that matches flash.nvim's behavior:
 
-### Setup
-
-```elisp
-(with-eval-after-load 'evil
-  (define-key evil-normal-state-map (kbd "s") #'flash-emacs-jump)
-  (define-key evil-visual-state-map (kbd "s") #'flash-emacs-jump)
-  (define-key evil-operator-state-map (kbd "s") #'flash-emacs-jump))
-```
-
-### Visual Mode Behavior
-
-When in evil visual mode, flash-emacs automatically:
-
-1. **Detects visual state** - Recognizes character, line, and block visual modes
-2. **Extends selection** - Jumping extends the selection to the target (configurable)
-3. **Preserves visual type** - Maintains character/line/block selection behavior
-4. **Handles multi-window** - Works across windows while preserving selection
-
-#### Visual Selection Types
-
-- **Character-wise (`v`)** - Extends selection character by character
-- **Line-wise (`V`)** - Extends selection line by line, snapping to line boundaries  
-- **Block-wise (`C-v`)** - Extends rectangular selection
-
-### Operator-Pending Mode
-
-Flash-emacs works seamlessly with evil operators:
-
-```
-d s [pattern] [label]  ; Delete to flash target
-c s [pattern] [label]  ; Change to flash target  
-y s [pattern] [label]  ; Yank to flash target
-```
-
-### Configuration
-
-```elisp
-;; Extend selection when jumping in visual mode (default)
-(setq flash-emacs-evil-visual-extend t)
-
-;; Exit visual mode when jumping (vim-like behavior)
-(setq flash-emacs-evil-visual-extend nil)
-```
-
 ## Usage
 
 ### Basic Usage
@@ -115,36 +71,6 @@ The system intelligently avoids label conflicts:
 - Only "safe" labels that won't conflict with valid search continuations are assigned
 - This ensures unambiguous interaction between searching and jumping
 
-## Configuration
-
-### Customization Variables
-
-```elisp
-;; Characters used as jump labels
-(setq flash-emacs-labels "asdfghjklqwertyuiopzxcvbnm")
-
-;; Use uppercase labels after lowercase ones
-(setq flash-emacs-uppercase-labels t)
-
-;; Search mode: 'exact or 'regex
-(setq flash-emacs-search-mode 'exact)
-
-;; Search in all visible windows
-(setq flash-emacs-multi-window t)
-
-;; Case sensitive search
-(setq flash-emacs-case-sensitive nil)
-
-;; Minimum pattern length before showing labels
-(setq flash-emacs-min-pattern-length 1)
-
-;; Maximum number of matches to process
-(setq flash-emacs-max-matches 100)
-
-;; Evil visual selection behavior
-(setq flash-emacs-evil-visual-extend t)
-```
-
 ### Face Customization
 
 ```elisp
@@ -168,34 +94,6 @@ The system intelligently avoids label conflicts:
 
 ## Examples
 
-### Evil-mode Scenarios
-
-#### Character Visual Selection
-```
-1. Position cursor at start of word
-2. Press 'v' to enter character visual mode
-3. Press 's' (flash-emacs-jump)
-4. Type search pattern
-5. Press label to extend selection to target
-```
-
-#### Line Visual Selection  
-```
-1. Position cursor anywhere on line
-2. Press 'V' to enter line visual mode
-3. Press 's' (flash-emacs-jump)
-4. Type search pattern
-5. Press label to extend selection to target line
-```
-
-#### Operator + Flash
-```
-1. Press 'd' (delete operator)
-2. Press 's' (flash-emacs-jump)  
-3. Type search pattern
-4. Press label to delete from cursor to target
-```
-
 ### Multi-window Navigation
 
 Flash-emacs works across all visible windows:
@@ -204,17 +102,6 @@ Flash-emacs works across all visible windows:
 2. Use flash-emacs from any window
 3. See matches labeled in all windows
 4. Jump to any visible location instantly
-
-### Window-Aware Search
-
-Flash-emacs only shows labels for content visible in each window:
-
-- **Visible content only**: No labels for text scrolled out of view
-- **Per-window bounds**: Each window shows matches for its visible area
-- **Performance optimized**: Only processes visible content
-- **Intuitive behavior**: Matches what you can actually see
-
-This prevents overwhelming numbers of labels and improves performance, especially in large files.
 
 ## Comparison with flash.nvim
 
