@@ -420,9 +420,7 @@ Returns nil to exit, t to continue."
 (defun flash-emacs--main-loop (state)
   "Main interaction loop for STATE."
   (unwind-protect
-      (progn
-        (message "Flash: Type to search, then use labels to jump (ESC to cancel)")
-        (while (flash-emacs--handle-input state)))
+      (while (flash-emacs--handle-input state))
     (flash-emacs--clear-overlays)))
 
 ;;;###autoload

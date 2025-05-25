@@ -14,7 +14,8 @@ TEST_FILES = tests/test-functionality.el \
              tests/test-label-conflicts.el \
              tests/test-uppercase-labels.el \
              tests/test-complete-functionality.el \
-             tests/test-prompt-changes.el
+             tests/test-prompt-changes.el \
+             tests/test-clean-startup.el
 
 # Package files
 PACKAGE_FILES = $(SOURCES) \
