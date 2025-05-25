@@ -244,6 +244,19 @@ Only searches within the visible area of the window."
                     matches))))))
     (nreverse matches)))
 
+(defun flash-emacs--is-doom-popup-buffer-p ()
+  "Check if current buffer is a Doom Emacs popup buffer."
+  (and (boundp '+popup-buffer-mode)
+       +popup-buffer-mode))
+
+(defun flash-emacs--is-popup-buffer-p ()
+  "Check if current buffer is any kind of popup buffer."
+  (or (flash-emacs--is-doom-popup-buffer-p)
+      ;; Check for other popup indicators
+      (and (boundp 'popper-popup-status) popper-popup-status)
+      ;; Check if buffer is not displayed in selected window
+      (not (eq (current-buffer) (window-buffer (selected-window))))))
+
 (defun flash-emacs--search-pattern (pattern)
   "Find all matches for PATTERN in visible windows."
   (when (>= (length pattern) flash-emacs-min-pattern-length)
@@ -251,34 +264,71 @@ Only searches within the visible area of the window."
           (windows (if flash-emacs-multi-window
                       (window-list)
                     (list (selected-window)))))
-      ;; In batch mode or when the selected window doesn't show current buffer,
-      ;; search in current buffer directly
-      (if (or noninteractive 
-              (not (eq (current-buffer) (window-buffer (selected-window)))))
-          (let ((case-fold-search (not flash-emacs-case-sensitive)))
-            (save-excursion
-              ;; In batch mode, search entire buffer since we can't get window bounds
-              (goto-char (point-min))
-              (let ((search-func (if (eq flash-emacs-search-mode 'regex)
-                                    #'re-search-forward
-                                  #'search-forward)))
-                (while (and (funcall search-func pattern nil t)
-                           (< (length matches) flash-emacs-max-matches))
-                  (let ((match-start (match-beginning 0))
-                        (match-end (match-end 0)))
-                    (push (list :pos match-start
-                               :end-pos match-end
-                               :window (selected-window)
-                               :text (buffer-substring-no-properties match-start match-end))
-                          matches))))))
-        ;; Normal interactive mode - search in windows
+      ;; Handle different scenarios for popup buffers
+      (cond
+       ;; Batch mode - search entire buffer
+       (noninteractive 
+        (let ((case-fold-search (not flash-emacs-case-sensitive)))
+          (save-excursion
+            (goto-char (point-min))
+            (let ((search-func (if (eq flash-emacs-search-mode 'regex)
+                                  #'re-search-forward
+                                #'search-forward)))
+              (while (and (funcall search-func pattern nil t)
+                         (< (length matches) flash-emacs-max-matches))
+                (let ((match-start (match-beginning 0))
+                      (match-end (match-end 0)))
+                  (push (list :pos match-start
+                             :end-pos match-end
+                             :window (selected-window)
+                             :text (buffer-substring-no-properties match-start match-end))
+                        matches)))))))
+       
+       ;; Popup buffer - search current buffer directly
+       ((flash-emacs--is-popup-buffer-p)
+        (let ((case-fold-search (not flash-emacs-case-sensitive)))
+          (save-excursion
+            (goto-char (point-min))
+            (let ((search-func (if (eq flash-emacs-search-mode 'regex)
+                                  #'re-search-forward
+                                #'search-forward)))
+              (while (and (funcall search-func pattern nil t)
+                         (< (length matches) flash-emacs-max-matches))
+                (let ((match-start (match-beginning 0))
+                      (match-end (match-end 0)))
+                  (push (list :pos match-start
+                             :end-pos match-end
+                             :window (selected-window)
+                             :text (buffer-substring-no-properties match-start match-end))
+                        matches)))))))
+       
+       ;; Normal interactive mode - search in windows
+       (t
         (dolist (window windows)
           (when (window-live-p window)
             (setq matches (append matches 
-                                 (flash-emacs--search-in-window pattern window))))))
+                                 (flash-emacs--search-in-window pattern window)))))))
       (nreverse matches))))
 
 ;;; Label assignment
+
+(defun flash-emacs--get-window-width (window)
+  "Get the effective width for distance calculations in WINDOW."
+  (condition-case err
+      (cond
+       ;; Normal case: window displays current buffer
+       ((eq (current-buffer) (window-buffer window))
+        (with-selected-window window
+          (window-total-width)))
+       
+       ;; Popup buffer case: try to get window width safely
+       ((flash-emacs--is-popup-buffer-p)
+        (or (ignore-errors (window-total-width window))
+            80))  ; fallback width
+       
+       ;; Fallback
+       (t 80))
+    (error 80)))  ; safe fallback
 
 (defun flash-emacs--distance-from-cursor (match current-window current-point)
   "Calculate 2D distance of MATCH from cursor in CURRENT-WINDOW at CURRENT-POINT.
@@ -296,12 +346,8 @@ Uses flash.nvim's algorithm: converts (line, col) to 1D coordinate and calculate
                          (goto-char match-pos)
                          (current-column)))
              ;; Convert to 1D coordinates (like flash.nvim)
-             ;; Use actual window width (equivalent to vim.go.columns)
-             (columns-per-line (if (eq (current-buffer) (window-buffer current-window))
-                                  (with-selected-window current-window
-                                    (window-total-width))
-                                ;; For popup buffers, use a reasonable default width
-                                80))
+             ;; Use safe window width calculation
+             (columns-per-line (flash-emacs--get-window-width current-window))
              (cursor-1d (+ (* cursor-line columns-per-line) cursor-col))
              (match-1d (+ (* match-line columns-per-line) match-col)))
         (abs (- cursor-1d match-1d)))
@@ -439,44 +485,77 @@ Only assigns labels to the closest matches that can receive labels."
          (window (plist-get match :window))
          (label (plist-get match :label)))
     (when label
-      ;; Handle popup buffers where window doesn't display current buffer
-      (if (eq (current-buffer) (window-buffer window))
-          ;; Normal case: window displays the buffer
-          (with-selected-window window
+      (condition-case err
+          ;; Try different overlay creation strategies
+          (cond
+           ;; Strategy 1: Normal case - window displays the buffer
+           ((eq (current-buffer) (window-buffer window))
+            (with-selected-window window
+              (let ((overlay (make-overlay pos (1+ pos))))
+                (overlay-put overlay 'display 
+                            (propertize label 'face 'flash-emacs-label))
+                (overlay-put overlay 'flash-emacs 'label)
+                (overlay-put overlay 'window window)
+                overlay)))
+           
+           ;; Strategy 2: Popup buffer - create overlay directly in current buffer
+           ((flash-emacs--is-popup-buffer-p)
             (let ((overlay (make-overlay pos (1+ pos))))
               (overlay-put overlay 'display 
                           (propertize label 'face 'flash-emacs-label))
               (overlay-put overlay 'flash-emacs 'label)
               (overlay-put overlay 'window window)
               overlay))
-        ;; Popup buffer case: create overlay directly in current buffer
-        (let ((overlay (make-overlay pos (1+ pos))))
-          (overlay-put overlay 'display 
-                      (propertize label 'face 'flash-emacs-label))
-          (overlay-put overlay 'flash-emacs 'label)
-          (overlay-put overlay 'window window)
-          overlay)))))
+           
+           ;; Strategy 3: Fallback - try to create overlay in current buffer
+           (t
+            (let ((overlay (make-overlay pos (1+ pos))))
+              (overlay-put overlay 'display 
+                          (propertize label 'face 'flash-emacs-label))
+              (overlay-put overlay 'flash-emacs 'label)
+              (overlay-put overlay 'window window)
+              overlay)))
+        (error
+         ;; If overlay creation fails, log the error but don't crash
+         (message "Flash-emacs: Failed to create label overlay: %s" (error-message-string err))
+         nil)))))
 
 (defun flash-emacs--create-match-overlay (match)
   "Create an overlay for highlighting MATCH."
   (let* ((pos (plist-get match :pos))
          (end-pos (plist-get match :end-pos))
          (window (plist-get match :window)))
-    ;; Handle popup buffers where window doesn't display current buffer
-    (if (eq (current-buffer) (window-buffer window))
-        ;; Normal case: window displays the buffer
-        (with-selected-window window
+    (condition-case err
+        ;; Try different overlay creation strategies
+        (cond
+         ;; Strategy 1: Normal case - window displays the buffer
+         ((eq (current-buffer) (window-buffer window))
+          (with-selected-window window
+            (let ((overlay (make-overlay pos end-pos)))
+              (overlay-put overlay 'face 'flash-emacs-match)
+              (overlay-put overlay 'flash-emacs 'match)
+              (overlay-put overlay 'window window)
+              overlay)))
+         
+         ;; Strategy 2: Popup buffer - create overlay directly in current buffer
+         ((flash-emacs--is-popup-buffer-p)
           (let ((overlay (make-overlay pos end-pos)))
             (overlay-put overlay 'face 'flash-emacs-match)
             (overlay-put overlay 'flash-emacs 'match)
             (overlay-put overlay 'window window)
             overlay))
-      ;; Popup buffer case: create overlay directly in current buffer
-      (let ((overlay (make-overlay pos end-pos)))
-        (overlay-put overlay 'face 'flash-emacs-match)
-        (overlay-put overlay 'flash-emacs 'match)
-        (overlay-put overlay 'window window)
-        overlay))))
+         
+         ;; Strategy 3: Fallback - try to create overlay in current buffer
+         (t
+          (let ((overlay (make-overlay pos end-pos)))
+            (overlay-put overlay 'face 'flash-emacs-match)
+            (overlay-put overlay 'flash-emacs 'match)
+            (overlay-put overlay 'window window)
+            overlay)))
+      (error
+       ;; If overlay creation fails, log the error but don't crash
+       (message "Flash-emacs: Failed to create match overlay: %s" (error-message-string err))
+       nil))))
 
 (defun flash-emacs--show-overlays (all-matches labeled-matches)
   "Display overlays for ALL-MATCHES (background) and LABELED-MATCHES (labels).
