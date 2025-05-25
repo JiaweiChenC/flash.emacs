@@ -209,17 +209,35 @@ When nil, jumping will move the cursor and exit visual mode."
 
 ;;; Search functions
 
+(defun flash-emacs--get-window-bounds (window)
+  "Get the visible line bounds for WINDOW.
+Returns (start-line . end-line) where lines are 1-indexed."
+  (let ((win-start (window-start window))
+        (win-end (window-end window)))
+    (with-current-buffer (window-buffer window)
+      (cons (line-number-at-pos win-start)
+            (line-number-at-pos win-end)))))
+
 (defun flash-emacs--search-in-window (pattern window)
-  "Search for PATTERN in WINDOW and return list of matches."
+  "Search for PATTERN in WINDOW and return list of matches.
+Only searches within the visible area of the window."
   (let ((matches '())
         (case-fold-search (not flash-emacs-case-sensitive)))
     (with-current-buffer (window-buffer window)
       (save-excursion
-        (goto-char (point-min))
-        (let ((search-func (if (eq flash-emacs-search-mode 'regex)
-                              #'re-search-forward
-                            #'search-forward)))
-          (while (and (funcall search-func pattern nil t)
+        ;; Get visible bounds for this window
+        (let* ((bounds (flash-emacs--get-window-bounds window))
+               (start-line (car bounds))
+               (end-line (cdr bounds))
+               (start-pos (progn (goto-line start-line) (line-beginning-position)))
+               (end-pos (progn (goto-line end-line) (line-end-position)))
+               (search-func (if (eq flash-emacs-search-mode 'regex)
+                               #'re-search-forward
+                             #'search-forward)))
+          
+          ;; Search only within visible bounds
+          (goto-char start-pos)
+          (while (and (funcall search-func pattern end-pos t)
                      (< (length matches) flash-emacs-max-matches))
             (let ((match-start (match-beginning 0))
                   (match-end (match-end 0)))
@@ -243,6 +261,7 @@ When nil, jumping will move the cursor and exit visual mode."
               (not (eq (current-buffer) (window-buffer (selected-window)))))
           (let ((case-fold-search (not flash-emacs-case-sensitive)))
             (save-excursion
+              ;; In batch mode, search entire buffer since we can't get window bounds
               (goto-char (point-min))
               (let ((search-func (if (eq flash-emacs-search-mode 'regex)
                                     #'re-search-forward

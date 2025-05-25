@@ -11,6 +11,7 @@ Flash-emacs provides fast, accurate jump navigation similar to flash.nvim. Type 
 - **Multi-character search patterns** with progressive narrowing
 - **Smart label assignment** prioritizing current window and distance  
 - **Intelligent conflict avoidance** between search and jump labels
+- **Window-aware search** - only shows matches in visible content
 - **Multi-window support** for searching across visible windows
 - **Evil-mode integration** with visual selection support
 - **Visual feedback** with highlighted matches and overlay labels
@@ -203,6 +204,17 @@ Flash-emacs works across all visible windows:
 3. See matches labeled in all windows
 4. Jump to any visible location instantly
 
+### Window-Aware Search
+
+Flash-emacs only shows labels for content visible in each window:
+
+- **Visible content only**: No labels for text scrolled out of view
+- **Per-window bounds**: Each window shows matches for its visible area
+- **Performance optimized**: Only processes visible content
+- **Intuitive behavior**: Matches what you can actually see
+
+This prevents overwhelming numbers of labels and improves performance, especially in large files.
+
 ## Technical Details
 
 ### Architecture
@@ -250,6 +262,7 @@ Flash-emacs provides feature parity with flash.nvim:
 | Multi-character search | ✓ | ✓ |
 | Smart label assignment | ✓ | ✓ |
 | Conflict avoidance | ✓ | ✓ |
+| Window-aware search | ✓ | ✓ |
 | Visual mode support | ✓ | ✓ |
 | Operator-pending mode | ✓ | ✓ |
 | Multi-window search | ✓ | ✓ |
