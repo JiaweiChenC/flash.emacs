@@ -400,6 +400,12 @@ Prioritizes staying in current window if the target buffer is already displayed 
               
               ;; Update search results
               (setq matches (flash-emacs--search-pattern pattern))
+              
+              ;; Check for zero matches and exit automatically
+              (when (and (> (length pattern) 0) (= (length matches) 0))
+                ;; (message "No matches found for '%s'" pattern)
+                (throw 'flash-exit nil))
+              
               (let ((windows (if flash-emacs-multi-window
                                (window-list)
                              (list (selected-window))))
