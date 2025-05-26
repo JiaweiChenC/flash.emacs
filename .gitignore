@@ -4,6 +4,7 @@
 *.pyo
 *.pyd
 __pycache__/
+tests/
 
 # Distribution / packaging
 dist/
@@ -46,4 +47,4 @@ node_modules/
 .npm
 
 # Optional REPL history
-.node_repl_history 
+.node_repl_history
