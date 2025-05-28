@@ -41,7 +41,7 @@
 ;;; Faces
 
 (defface flash-emacs-ts-label
-  '((t (:background "blue" :foreground "white" :weight bold)))
+  '((t (:background "red" :foreground "white" :weight bold)))
   "Face for treesitter jump labels."
   :group 'flash-emacs-ts)
 
