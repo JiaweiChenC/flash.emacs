@@ -54,17 +54,17 @@
 ;;;###autoload
 (defun flash-emacs-remote ()
   "Start flash remote operation.
-This allows you to perform operations in remote windows with automatic restoration.
+Allows you to perform Evil operations in remote windows with automatic restoration.
 Usage: Start an operator (like y, d, c), press 'r', then use flash to jump,
 then input a motion or text object."
   (interactive)
-  ;; Save current state
   (flash-emacs-remote--save-state)
   (setq evil-inhibit-operator t)
   (flash-emacs-jump)
-  (call-interactively #'flash-emacs-remote--restore-operator)
-  ;; jump to the original position
-  (goto-char flash-emacs-remote--current-position))
+  (unwind-protect
+      (call-interactively #'flash-emacs-remote--restore-operator)
+    ;; Always jump back, even if the operator was invalid or aborted
+      (goto-char flash-emacs-remote--current-position)))
 
 (defun flash-emacs-remote-ts ()
   "Start a remote operation with the ts feature."
