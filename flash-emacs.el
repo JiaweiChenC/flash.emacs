@@ -513,23 +513,16 @@ Each hook function is called with the selected match.")
   "Jump to the position of MATCH.
 Prioritizes staying in current window if the target buffer is already displayed there."
   (let ((target-window (plist-get match :window))
-        (target-buffer (plist-get match :buffer))
-        (pos (plist-get match :pos))
-        (current-window (selected-window)))
+        (pos (plist-get match :pos)))
 
     (push-mark)
-    ;; Check if current window shows the same buffer as the target
-    (if (eq (window-buffer current-window) target-buffer)
-        ;; Stay in current window and just jump to position
-        (progn
-          (goto-char pos))
-      ;; Different buffer - switch to target window
+
       (progn
         (select-window target-window)
         (goto-char pos)))
     
     ;; Run hooks after jump
-    (run-hook-with-args 'flash-emacs-jump-hook match)))
+    (run-hook-with-args 'flash-emacs-jump-hook match))
 
 ;;; Main function
 
