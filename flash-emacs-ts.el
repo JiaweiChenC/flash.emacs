@@ -120,50 +120,42 @@
         overlay))))
 
 (defun flash-emacs-ts--show-overlays (all-matches labeled-matches)
-  "Display overlays for matches with correct visual stacking (innermost appears first visually)."
+  "Display overlays for matches precisely at element endpoints."
   (flash-emacs-ts--clear-overlays)
 
-  ;; Highlight matches
+  ;; Create match highlighting overlays
   (dolist (match all-matches)
-    (when-let ((match-overlay (flash-emacs-ts--create-match-overlay match)))
+    (when-let* ((match-overlay (flash-emacs-ts--create-match-overlay match)))
       (push match-overlay flash-emacs-ts--overlays)))
 
-  (let ((overlay-groups (make-hash-table :test #'equal)))
-
-    ;; Collect overlay data grouped by position
+  (let ((overlay-data '()))
+    ;; Gather overlay positions for labels
     (dolist (match labeled-matches)
-      (let* ((pos (plist-get match :pos))
-             (end-pos (plist-get match :end-pos))
-             (buffer (plist-get match :buffer))
-             (label (plist-get match :label))
-             (length (- end-pos pos)))
+      (let ((pos (plist-get match :pos))
+            (end-pos (plist-get match :end-pos))
+            (buffer (plist-get match :buffer))
+            (label (plist-get match :label)))
         (when label
-          ;; Insert both before and after overlays grouped by position
-          (mapc (lambda (entry)
-                  (let ((key (nth 0 entry)))
-                    (puthash key
-                             (cons (append entry (list length))
-                                   (gethash key overlay-groups))
-                             overlay-groups)))
-                `((,pos ,buffer ,label before)
-                  (,end-pos ,buffer ,label after))))))
+          ;; Before-label overlay
+          (push (list pos buffer label 'before) overlay-data)
+          ;; Directly at endpoint (after-string)
+          (push (list end-pos buffer label 'after) overlay-data))))
 
-    ;; For each position group, sort and create overlays
-    (maphash
-     (lambda (pos entries)
-       ;; Sort by length DESC → outermost created first
-       (dolist (data (sort entries (lambda (a b) (> (nth 4 a) (nth 4 b)))))
-         (let ((pos (nth 0 data))
-               (buffer (nth 1 data))
-               (label (nth 2 data))
-               (type (nth 3 data)))
-           (with-current-buffer buffer
-             (let ((overlay (make-overlay pos pos)))
-               (overlay-put overlay (if (eq type 'before) 'before-string 'after-string)
-                            (propertize label 'face 'flash-emacs-ts-label))
-               (overlay-put overlay 'flash-emacs-ts 'label)
-               (push overlay flash-emacs-ts--overlays))))))
-     overlay-groups)))
+    ;; Sort overlays by descending position
+    (setq overlay-data (sort overlay-data (lambda (a b) (> (car a) (car b)))))
+
+    ;; Create overlays precisely at positions
+    (dolist (data overlay-data)
+      (let ((pos (nth 0 data))
+            (buffer (nth 1 data))
+            (label (nth 2 data))
+            (type (nth 3 data)))
+        (with-current-buffer buffer
+          (let ((overlay (make-overlay pos pos)))
+            (overlay-put overlay (if (eq type 'before) 'before-string 'after-string)
+                         (propertize label 'face 'flash-emacs-ts-label))
+            (overlay-put overlay 'flash-emacs-ts 'label)
+            (push overlay flash-emacs-ts--overlays)))))))
 
 
 (defun flash-emacs-ts--clear-overlays ()
