@@ -45,15 +45,11 @@
   "Face for treesitter jump labels."
   :group 'flash-emacs-ts)
 
-;; (defface flash-emacs-ts-match
-;;   '((t (:background "cyan" :foreground "black")))
-;;   "Face for treesitter matches."
-;;   :group 'flash-emacs-ts)
-
 (defface flash-emacs-ts-match
   '((t ()))
   "Face for treesitter matches."
   :group 'flash-emacs-ts)
+
 ;;; Internal variables
 
 (defvar flash-emacs-ts--overlays nil
@@ -124,47 +120,42 @@
         overlay))))
 
 (defun flash-emacs-ts--show-overlays (all-matches labeled-matches)
-  "Display overlays for matches with simple overlap resolution."
+  "Display overlays for matches precisely at element endpoints."
   (flash-emacs-ts--clear-overlays)
+
+  ;; Create match highlighting overlays
   (dolist (match all-matches)
     (when-let* ((match-overlay (flash-emacs-ts--create-match-overlay match)))
       (push match-overlay flash-emacs-ts--overlays)))
-  (let ((position-groups (make-hash-table :test 'equal)))
+
+  (let ((overlay-data '()))
+    ;; Gather overlay positions for labels
     (dolist (match labeled-matches)
-      (let* ((pos (plist-get match :pos))
-             (buffer (plist-get match :buffer))
-             (key (format "%s:%d" buffer pos)))
-        (puthash key (append (gethash key position-groups) (list match)) position-groups)))
-    (maphash (lambda (key matches-at-pos)
-               (let ((match-count (length matches-at-pos)))
-                 (if (= match-count 1)
-                     (let* ((match (car matches-at-pos))
-                            (pos (plist-get match :pos))
-                            (buffer (plist-get match :buffer))
-                            (label (plist-get match :label)))
-                       (when label
-                         (with-current-buffer buffer
-                           (let ((overlay (make-overlay pos (1+ pos))))
-                             (overlay-put overlay 'display 
-                                         (propertize label 'face 'flash-emacs-ts-label))
-                             (overlay-put overlay 'flash-emacs-ts 'label)
-                             (push overlay flash-emacs-ts--overlays)))))
-                   (let ((index 0))
-                     (dolist (match matches-at-pos)
-                       (let* ((pos (plist-get match :pos))
-                              (end-pos (plist-get match :end-pos))
-                              (buffer (plist-get match :buffer))
-                              (label (plist-get match :label))
-                              (label-pos (if (= index 0) pos (1- end-pos))))
-                         (when label
-                           (with-current-buffer buffer
-                             (let ((overlay (make-overlay label-pos (1+ label-pos))))
-                               (overlay-put overlay 'display 
-                                           (propertize label 'face 'flash-emacs-ts-label))
-                               (overlay-put overlay 'flash-emacs-ts 'label)
-                               (push overlay flash-emacs-ts--overlays))))
-                         (setq index (1+ index))))))))
-             position-groups)))
+      (let ((pos (plist-get match :pos))
+            (end-pos (plist-get match :end-pos))
+            (buffer (plist-get match :buffer))
+            (label (plist-get match :label)))
+        (when label
+          ;; Before-label overlay
+          (push (list pos buffer label 'before) overlay-data)
+          ;; Directly at endpoint (after-string)
+          (push (list end-pos buffer label 'after) overlay-data))))
+
+    ;; Sort overlays by descending position
+    (setq overlay-data (sort overlay-data (lambda (a b) (> (car a) (car b)))))
+
+    ;; Create overlays precisely at positions
+    (dolist (data overlay-data)
+      (let ((pos (nth 0 data))
+            (buffer (nth 1 data))
+            (label (nth 2 data))
+            (type (nth 3 data)))
+        (with-current-buffer buffer
+          (let ((overlay (make-overlay pos pos)))
+            (overlay-put overlay (if (eq type 'before) 'before-string 'after-string)
+                         (propertize label 'face 'flash-emacs-ts-label))
+            (overlay-put overlay 'flash-emacs-ts 'label)
+            (push overlay flash-emacs-ts--overlays)))))))
 
 (defun flash-emacs-ts--clear-overlays ()
   "Remove all flash treesitter overlays."
