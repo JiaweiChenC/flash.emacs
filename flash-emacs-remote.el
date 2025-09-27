@@ -1,88 +1,209 @@
-;;; flash-emacs-remote.el --- Remote operations for flash-emacs -*- lexical-binding: t; -*-
+;;; flash-emacs-remote.el --- Remote operator support like flash.nvim -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2024 Free Software Foundation, Inc.
-
-;; Author: Flash-Emacs Contributors
-;; Maintainer: Flash-Emacs Contributors
-;; Version: 1.0.0
-;; Package-Requires: ((emacs "26.1") (evil "1.0.0") (flash-emacs "1.0.0"))
-;; Keywords: navigation, jump, search, convenience, evil
-;; URL: https://github.com/flash-emacs/flash-emacs
 
 ;;; Commentary:
-
-;; This package provides remote operation functionality for flash-emacs,
-;; similar to flash.nvim's remote feature.
 ;;
-;; Remote operations allow you to:
-;; 1. Start an operator (like delete, yank, change)
-;; 2. Press 'r' to enter remote mode
-;; 3. Jump to any position using flash
-;; 4. Execute a motion or text object at that position
-;; 5. Return to your original position
+;; This implements a "remote" operator flow similar to flash.nvim.
+;; Usage (Evil): type an operator (e.g. y/d/c), then press 'r'.
+;; - Cancels the pending operator
+;; - Use flash to jump to a remote location/window
+;; - Re-triggers the same operator to read a motion at the remote location
+;; - The operator is performed on that range
+;; - Cursor and windows are restored to the original position
 ;;
-;; Example: "yr<flash-label>iw" will yank a word at a remote position
-
 ;;; Code:
 
+(require 'cl-lib)
 (require 'evil)
 (require 'flash-emacs)
-(require 'flash-emacs-ts)
-
-;;; Customization
 
 (defgroup flash-emacs-remote nil
-  "Remote operations for flash-emacs."
-  :group 'flash-emacs
+  "Remote operator integration for flash-emacs."
+  :group 'convenience
   :prefix "flash-emacs-remote-")
 
-(defvar flash-emacs-remote--current-operator nil
-  "Current operator being executed.")
+(defcustom flash-emacs-remote-restore t
+  "When non-nil, restore original window configuration and cursor after remote op."
+  :type 'boolean
+  :group 'flash-emacs-remote)
 
-(defvar flash-emacs-remote--current-position nil
-  "Current position being executed.")
+(defcustom flash-emacs-remote-cursor '(hbar . 3)
+  "Cursor shape during remote operation.
+Can be: box, hollow, bar, hbar, or (hbar . WIDTH) for width."
+  :type '(choice (const :tag "Block" box)
+                 (const :tag "Hollow block" hollow)
+                 (const :tag "Vertical bar" bar)
+                 (const :tag "Horizontal bar" hbar)
+                 (cons :tag "Horizontal bar with width"
+                       (const hbar)
+                       (integer :tag "Width")))
+  :group 'flash-emacs-remote)
+
+;; Saved state
+(defvar flash-emacs-remote--saved-operator nil)
+(defvar flash-emacs-remote--saved-register nil)
+(defvar flash-emacs-remote--saved-window-config nil)
+(defvar flash-emacs-remote--saved-window nil)
+(defvar flash-emacs-remote--saved-point nil)
+(defvar flash-emacs-remote--saved-operator-keys nil)
 
 (defun flash-emacs-remote--save-state ()
-  "Save the current state for later restoration."
-  (setq flash-emacs-remote--current-operator evil-this-operator)
-  (setq flash-emacs-remote--current-position (point)))
+  "Save operator/window state for restoration."
+  (setq flash-emacs-remote--saved-operator evil-this-operator
+        flash-emacs-remote--saved-register evil-this-register
+        flash-emacs-remote--saved-window-config (current-window-configuration)
+        flash-emacs-remote--saved-window (selected-window)
+        flash-emacs-remote--saved-point (point-marker)))
 
-(evil-define-operator flash-emacs-remote--restore-operator (beg end type register)
-"Handle the operator at the target position."
-  (funcall flash-emacs-remote--current-operator beg end type register))
+(defun flash-emacs-remote--restore-state ()
+  "Restore window configuration and point (if enabled)."
+  (when (and flash-emacs-remote-restore
+             (not flash-emacs-remote--operator-active))
+    (when (window-configuration-p flash-emacs-remote--saved-window-config)
+      (set-window-configuration flash-emacs-remote--saved-window-config))
+    (when (window-live-p flash-emacs-remote--saved-window)
+      (select-window flash-emacs-remote--saved-window))
+    (when (markerp flash-emacs-remote--saved-point)
+      (goto-char flash-emacs-remote--saved-point))))
+
+(defun flash-emacs-remote--operator-keys-minus-r ()
+  "Return the key vector used to start the operator, without the trailing 'r'."
+  (let* ((vec (this-command-keys-vector))
+         (len (length vec)))
+    (when (> len 0)
+      (cl-subseq vec 0 (1- len)))))
+
+(defun flash-emacs-remote--capture-operator-keys ()
+  "Capture the operator key sequence (including register/count), minus trailing 'r'."
+  (let* ((vec (this-command-keys-vector))
+         (len (length vec)))
+    (when (> len 0)
+      (cl-subseq vec 0 (1- len)))))
+
+(defun flash-emacs-remote--restore-when-op-done ()
+  "Restore original window/point when operator is finished.
+Waits until Evil leaves operator state; if in insert state (after change),
+restores after exiting insert."
+  (cond
+   ;; still waiting for motion
+   ((eq evil-state 'operator)
+    (run-at-time 0.03 nil #'flash-emacs-remote--restore-when-op-done))
+   ;; editing after change -- defer to insert leave
+   ((eq evil-state 'insert)
+    (add-hook 'evil-insert-state-exit-hook
+              (lambda ()
+                (remove-hook 'evil-insert-state-exit-hook #'ignore)
+                (flash-emacs-remote--restore-state))
+              :append :local))
+   ;; otherwise done, restore now
+   (t (flash-emacs-remote--restore-state))))
+
+(defvar flash-emacs-remote--invoking nil)
+(defvar flash-emacs-remote--op-called-once nil)
+(defvar flash-emacs-remote--operator-active nil)
+(defvar flash-emacs-remote--saved-cursor-type nil)
+
+(defun flash-emacs-remote--with-single-op (fn &rest args)
+  "Allow only the first operator call while remote is invoking."
+  (if (and flash-emacs-remote--invoking flash-emacs-remote--op-called-once)
+      ;; swallow duplicate immediate invocation
+      (message "[flash-remote] suppress duplicate operator")
+    (let ((res (apply fn args)))
+      (when flash-emacs-remote--invoking
+        (setq flash-emacs-remote--op-called-once t))
+      res)))
+
+(defun flash-emacs-remote--install-op-guards ()
+  (advice-add 'evil-yank :around #'flash-emacs-remote--with-single-op)
+  (advice-add 'evil-delete :around #'flash-emacs-remote--with-single-op)
+  (advice-add 'evil-change :around #'flash-emacs-remote--with-single-op))
+
+(defun flash-emacs-remote--remove-op-guards ()
+  (advice-remove 'evil-yank #'flash-emacs-remote--with-single-op)
+  (advice-remove 'evil-delete #'flash-emacs-remote--with-single-op)
+  (advice-remove 'evil-change #'flash-emacs-remote--with-single-op))
+
+(defun flash-emacs-remote--set-cursor ()
+  "Set cursor shape for remote operation."
+  (when flash-emacs-remote-cursor
+    (setq flash-emacs-remote--saved-cursor-type cursor-type)
+    (setq cursor-type flash-emacs-remote-cursor)))
+
+(defun flash-emacs-remote--restore-cursor ()
+  "Restore original cursor shape."
+  (when flash-emacs-remote--saved-cursor-type
+    (setq cursor-type flash-emacs-remote--saved-cursor-type)
+    (setq flash-emacs-remote--saved-cursor-type nil)))
+
+(defun flash-emacs-remote--schedule-restore ()
+  "Schedule restoration based on the current Evil state.
+For change operator, wait until insert mode is exited."
+  (cond
+   ;; If in insert state after change operation, wait for insert-leave
+   ((eq evil-state 'insert)
+    (add-hook 'evil-insert-state-exit-hook
+              (lambda ()
+                (remove-hook 'evil-insert-state-exit-hook #'flash-emacs-remote--delayed-restore)
+                (flash-emacs-remote--restore-cursor)
+                (flash-emacs-remote--restore-state))
+              nil t))
+   ;; For other operators, restore immediately
+   (t (flash-emacs-remote--restore-cursor)
+      (flash-emacs-remote--restore-state))))
 
 ;;;###autoload
 (defun flash-emacs-remote ()
-  "Start flash remote operation.
-Allows you to perform Evil operations in remote windows with automatic restoration.
-Usage: Start an operator (like y, d, c), press 'r', then use flash to jump,
-then input a motion or text object."
+  "Start a remote operation (press during Evil operator-pending)."
   (interactive)
-  (flash-emacs-remote--save-state)
-  (setq evil-inhibit-operator t)
-  (flash-emacs-jump)
-  (unwind-protect
-      (call-interactively #'flash-emacs-remote--restore-operator)
-    ;; Always jump back, even if the operator was invalid or aborted
-      (goto-char flash-emacs-remote--current-position)))
+  (unless (evil-operator-state-p)
+    (user-error "flash-remote: call after an operator (y/d/c)"))
 
-(defun flash-emacs-remote-ts ()
-  "Start a remote operation with the ts feature."
-  (interactive)
-  ;; Save current state
-  (flash-emacs-remote--save-state))
+  ;; Save operator/register/env
+  (setq flash-emacs-remote--saved-operator evil-this-operator
+        flash-emacs-remote--saved-register evil-this-register)
+  (flash-emacs-remote--save-state)
+
+  ;; Schedule the remote operation to happen AFTER the current command completes
+  ;; This prevents Evil from seeing anything as the motion for the current operator
+  (run-at-time 0 nil
+               (lambda ()
+                 ;; Jump remotely 
+                 (flash-emacs-jump)
+                 
+                 ;; Set special cursor shape for remote operation
+                 (flash-emacs-remote--set-cursor)
+                 
+                 ;; Restart the same operator at the remote point
+                 (evil-repeat-abort)
+                 (setq flash-emacs-remote--invoking t
+                       flash-emacs-remote--op-called-once nil
+                       flash-emacs-remote--operator-active t)
+                 (flash-emacs-remote--install-op-guards)
+                 (unwind-protect
+                     (when (functionp flash-emacs-remote--saved-operator)
+                       (let ((evil-this-register flash-emacs-remote--saved-register))
+                         (evil-without-repeat
+                           (call-interactively flash-emacs-remote--saved-operator))))
+                   (setq flash-emacs-remote--invoking nil
+                         flash-emacs-remote--operator-active nil)
+                   ;; cleanup guards shortly after
+                   (run-at-time 0.05 nil #'flash-emacs-remote--remove-op-guards)
+                   ;; restore original position after operator completes
+                   (when flash-emacs-remote-restore
+                     (flash-emacs-remote--schedule-restore)))))
+
+  ;; For the current operator, provide a dummy motion that does nothing
+  (evil-motion-range (point) (point)))
 
 ;;;###autoload
 (defun flash-emacs-remote-setup ()
-  "Set up keybindings for flash-emacs-remote."
+  "Bind 'r' in Evil operator state to remote operation."
   (interactive)
-  
-  ;; Bind 'r' in operator-pending mode to flash-emacs-remote
-  (define-key evil-operator-state-map (kbd "r") #'flash-emacs-remote)
-  ;; Bind 'R' in operator-pending mode to flash-emacs-remote-ts
-  (define-key evil-operator-state-map (kbd "R") #'flash-emacs-remote-ts))
+  (define-key evil-operator-state-map (kbd "r") #'flash-emacs-remote))
 
+;; Enable by default
 (flash-emacs-remote-setup)
+
 (provide 'flash-emacs-remote)
 
 ;;; flash-emacs-remote.el ends here
