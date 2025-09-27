@@ -27,17 +27,6 @@
   :type 'boolean
   :group 'flash-emacs-remote)
 
-(defcustom flash-emacs-remote-cursor '(hbar . 3)
-  "Cursor shape during remote operation.
-Can be: box, hollow, bar, hbar, or (hbar . WIDTH) for width."
-  :type '(choice (const :tag "Block" box)
-                 (const :tag "Hollow block" hollow)
-                 (const :tag "Vertical bar" bar)
-                 (const :tag "Horizontal bar" hbar)
-                 (cons :tag "Horizontal bar with width"
-                       (const hbar)
-                       (integer :tag "Width")))
-  :group 'flash-emacs-remote)
 
 ;; Saved state
 (defvar flash-emacs-remote--saved-operator nil)
@@ -101,7 +90,6 @@ restores after exiting insert."
 (defvar flash-emacs-remote--invoking nil)
 (defvar flash-emacs-remote--op-called-once nil)
 (defvar flash-emacs-remote--operator-active nil)
-(defvar flash-emacs-remote--saved-cursor-type nil)
 
 (defun flash-emacs-remote--with-single-op (fn &rest args)
   "Allow only the first operator call while remote is invoking."
@@ -123,17 +111,6 @@ restores after exiting insert."
   (advice-remove 'evil-delete #'flash-emacs-remote--with-single-op)
   (advice-remove 'evil-change #'flash-emacs-remote--with-single-op))
 
-(defun flash-emacs-remote--set-cursor ()
-  "Set cursor shape for remote operation."
-  (when flash-emacs-remote-cursor
-    (setq flash-emacs-remote--saved-cursor-type cursor-type)
-    (setq cursor-type flash-emacs-remote-cursor)))
-
-(defun flash-emacs-remote--restore-cursor ()
-  "Restore original cursor shape."
-  (when flash-emacs-remote--saved-cursor-type
-    (setq cursor-type flash-emacs-remote--saved-cursor-type)
-    (setq flash-emacs-remote--saved-cursor-type nil)))
 
 (defun flash-emacs-remote--schedule-restore ()
   "Schedule restoration based on the current Evil state.
@@ -144,20 +121,17 @@ For change operator, wait until insert mode is exited."
     (add-hook 'evil-insert-state-exit-hook
               (lambda ()
                 (remove-hook 'evil-insert-state-exit-hook #'flash-emacs-remote--delayed-restore)
-                (flash-emacs-remote--restore-cursor)
                 (flash-emacs-remote--restore-state))
               nil t))
    ;; For other operators, restore immediately
-   (t (flash-emacs-remote--restore-cursor)
-      (flash-emacs-remote--restore-state))))
+   (t (flash-emacs-remote--restore-state))))
 
 ;;;###autoload
 (defun flash-emacs-remote ()
   "Start a remote operation (press during Evil operator-pending)."
   (interactive)
-  (unless (evil-operator-state-p)
-    (user-error "flash-remote: call after an operator (y/d/c)"))
-
+  (unless (eq evil-state 'operator)
+    (user-error "flash-remote: must be called from Evil operator-pending state"))
   ;; Save operator/register/env
   (setq flash-emacs-remote--saved-operator evil-this-operator
         flash-emacs-remote--saved-register evil-this-register)
@@ -169,9 +143,6 @@ For change operator, wait until insert mode is exited."
                (lambda ()
                  ;; Jump remotely 
                  (flash-emacs-jump)
-                 
-                 ;; Set special cursor shape for remote operation
-                 (flash-emacs-remote--set-cursor)
                  
                  ;; Restart the same operator at the remote point
                  (evil-repeat-abort)
