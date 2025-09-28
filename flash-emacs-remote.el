@@ -162,9 +162,7 @@ For change operator, wait until insert mode is exited."
                    ;; restore original position after operator completes
                    (when flash-emacs-remote-restore
                      (flash-emacs-remote--schedule-restore)))))
-
-  ;; For the current operator, provide a dummy motion that does nothing
-  (evil-motion-range (point) (point)))
+  )
 
 ;;;###autoload
 (defun flash-emacs-remote-setup ()
