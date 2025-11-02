@@ -299,11 +299,18 @@ Skips excluded buffers (binary, image, etc.)."
                     (while (re-search-forward skip-pattern search-end t)
                       (let* ((match-end (match-end 0))
                              (following-char (buffer-substring-no-properties 
-                                              (1- match-end) match-end)))
-                        ;; Check if this following character is in our labels
-                        (when (and following-char 
-                                   (cl-find following-char labels :test #'string=))
-                          (push following-char conflicting-labels))))))))))
+                                              (1- match-end) match-end))
+                             (matched-label
+                              (and following-char
+                                   (cl-find-if (lambda (label)
+                                                 (if case-fold-search
+                                                     (string= (downcase following-char)
+                                                              (downcase label))
+                                                   (string= following-char label)))
+                                               labels))))
+                        ;; Check if this following character is in our labels (case-aware)
+                        (when matched-label
+                          (push matched-label conflicting-labels))))))))))
         (delete-dups conflicting-labels)))))
 
 (defun flash-emacs--filter-labels-for-pattern (labels search-pattern windows)
