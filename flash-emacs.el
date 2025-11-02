@@ -21,13 +21,12 @@
 ;;; Customization
 
 (defgroup flash-emacs nil
-  "Flash.nvim-like jump navigation for Emacs."
-  :group 'navigation
+  "Fast navigation with labeled jumps."
+  :group 'convenience
   :prefix "flash-emacs-")
 
-(defcustom flash-emacs-labels "asdfghjklqwertyuiopzxcvbnmASFGHJKLQWERTYUIOPZXCVBNM"
-  "Characters to use as jump labels.
-Includes both lowercase and uppercase letters for more available labels."
+(defcustom flash-emacs-labels "asdghklqwertyuiopzxcvbnmfj"
+  "Characters used as jump labels."
   :type 'string
   :group 'flash-emacs)
 
@@ -39,11 +38,11 @@ Includes both lowercase and uppercase letters for more available labels."
 (defcustom flash-emacs-case-sensitive 'smart
   "How to handle case sensitivity in search.
 - nil: always case-insensitive
-- t: always case-sensitive  
+- t: always case-sensitive
 - 'smart: case-insensitive if pattern is all lowercase, case-sensitive if it contains uppercase"
   :type '(choice (const :tag "Always case-insensitive" nil)
-                 (const :tag "Always case-sensitive" t)
-                 (const :tag "Smart case (default)" smart))
+          (const :tag "Always case-sensitive" t)
+          (const :tag "Smart case (default)" smart))
   :group 'flash-emacs)
 
 (defcustom flash-emacs-min-pattern-length 1
@@ -51,7 +50,7 @@ Includes both lowercase and uppercase letters for more available labels."
   :type 'integer
   :group 'flash-emacs)
 
-(defcustom flash-emacs-auto-jump-single t
+(defcustom flash-emacs-auto-jump-single nil
   "If non-nil, automatically jump when there is exactly one match."
   :type 'boolean
   :group 'flash-emacs)
@@ -92,8 +91,8 @@ Buffers larger than this are excluded to avoid performance issues."
 - 'all: reuse both lowercase and uppercase labels
 This helps maintain label stability as you type more characters."
   :type '(choice (const :tag "Never reuse labels" none)
-                 (const :tag "Reuse lowercase labels" lowercase)
-                 (const :tag "Reuse all labels" all))
+          (const :tag "Reuse lowercase labels" lowercase)
+          (const :tag "Reuse all labels" all))
   :group 'flash-emacs)
 
 ;;; Faces
@@ -238,10 +237,10 @@ Skips buffers that should be excluded (binary, too large, etc.)."
                     (let ((match-start (match-beginning 0))
                           (match-end (match-end 0)))
                       (push (list :pos match-start
-                                 :end-pos match-end
-                                 :window window
-                                 :buffer (current-buffer)
-                                 :text (buffer-substring-no-properties match-start match-end))
+                                  :end-pos match-end
+                                  :window window
+                                  :buffer (current-buffer)
+                                  :text (buffer-substring-no-properties match-start match-end))
                             matches))))))))
         (nreverse matches)))))
 
@@ -251,16 +250,16 @@ Automatically excludes windows with binary/image buffers and other unsuitable co
   (when (>= (length pattern) flash-emacs-min-pattern-length)
     (let ((matches '())
           (windows (if flash-emacs-multi-window
-                      (window-list)
-                    (list (selected-window)))))
-      
+                       (window-list)
+                     (list (selected-window)))))
+
       ;; Search only in visible windows with suitable buffers
       (dolist (window windows)
         (when (and (window-live-p window)
                    (not (flash-emacs--buffer-excluded-p (window-buffer window))))
           (setq matches (append matches 
-                               (flash-emacs--search-in-window pattern window)))))
-      
+                                (flash-emacs--search-in-window pattern window)))))
+
       matches)))
 
 ;;; Label assignment
@@ -300,10 +299,10 @@ Skips excluded buffers (binary, image, etc.)."
                     (while (re-search-forward skip-pattern search-end t)
                       (let* ((match-end (match-end 0))
                              (following-char (buffer-substring-no-properties 
-                                             (1- match-end) match-end)))
+                                              (1- match-end) match-end)))
                         ;; Check if this following character is in our labels
                         (when (and following-char 
-                                  (cl-find following-char labels :test #'string=))
+                                   (cl-find following-char labels :test #'string=))
                           (push following-char conflicting-labels))))))))))
         (delete-dups conflicting-labels)))))
 
@@ -320,9 +319,9 @@ Only checks windows with suitable (non-excluded) buffers."
           (setq conflicting-labels 
                 (append conflicting-labels 
                         (flash-emacs--find-conflicting-labels search-pattern 
-                                                             (mapcar #'char-to-string 
-                                                                    (string-to-list labels)) 
-                                                             window)))))
+                                                              (mapcar #'char-to-string
+                                                                      (string-to-list labels))
+                                                              window)))))
       ;; Remove conflicting labels and their case variants
       (let ((label-chars (string-to-list labels)))
         (mapconcat #'char-to-string
@@ -331,9 +330,9 @@ Only checks windows with suitable (non-excluded) buffers."
                                      (or (cl-find label-str conflicting-labels :test #'string=)
                                          ;; Also remove the opposite case
                                          (cl-find (if (= label-char (upcase label-char))
-                                                     (downcase label-str)
-                                                   (upcase label-str))
-                                                 conflicting-labels :test #'string=))))
+                                                      (downcase label-str)
+                                                    (upcase label-str))
+                                                  conflicting-labels :test #'string=))))
                                  label-chars)
                    "")))))
 
@@ -464,7 +463,7 @@ This maintains stability when refining searches but resets on new searches."
       (with-current-buffer buffer
         (let ((overlay (make-overlay pos (1+ pos))))
           (overlay-put overlay 'display 
-                      (propertize label 'face 'flash-emacs-label))
+                       (propertize label 'face 'flash-emacs-label))
           (overlay-put overlay 'flash-emacs 'label)
           overlay)))))
 
@@ -517,12 +516,12 @@ Prioritizes staying in current window if the target buffer is already displayed 
 
     (push-mark)
 
-      (progn
-        (select-window target-window)
-        (goto-char pos)))
-    
+    (progn
+      (select-window target-window)
+      (goto-char pos))
+
     ;; Run hooks after jump
-    (run-hook-with-args 'flash-emacs-jump-hook match))
+    (run-hook-with-args 'flash-emacs-jump-hook match)))
 
 ;;; Main function
 
@@ -534,75 +533,84 @@ Prioritizes staying in current window if the target buffer is already displayed 
   (setq flash-emacs--label-positions (make-hash-table :test 'equal)
         flash-emacs--current-pattern nil)
   
-  (let ((pattern "")
-        (matches '())
-        (labeled-matches '()))
-    
-    (unwind-protect
-        (catch 'flash-exit
-          (while t
-            ;; Get input
-            (let* ((prompt (if (> (length pattern) 0)
-                              (concat "Flash:" pattern)
-                            "Flash:"))
-                   (char (read-char-exclusive prompt)))
-              
-              (cond
-               ;; ESC or C-g - exit
-               ((or (= char 27) (= char 7))
-                (message "Flash cancelled")
-                (throw 'flash-exit nil))
-               
-               ;; Enter - jump to first match
-               ((= char 13)
-                (when (car labeled-matches)
-                  (flash-emacs--jump-to-match (car labeled-matches)))
-                (throw 'flash-exit nil))
-               
-               ;; Backspace - remove last character
-               ((or (= char 127) (= char 8))
-                (if (> (length pattern) 0)
-                    (setq pattern (substring pattern 0 -1))
-                  (throw 'flash-exit nil)))
-               
-               ;; Check if it's a jump label
-               ((and (>= char 32) (<= char 126))  ; Printable ASCII
-                (let* ((new-char (char-to-string char))
-                       (target-match (flash-emacs--find-match-by-label new-char labeled-matches)))
-                  (if target-match
-                      ;; It's a jump label - perform the jump
-                      (progn
-                        (flash-emacs--jump-to-match target-match)
-                        (throw 'flash-exit nil))
-                    ;; It's a regular character - add to search pattern
-                    (setq pattern (concat pattern new-char)))))
-               
-               ;; Unknown character - ignore
-               (t nil))
-              
-              ;; Update search results
-              (setq matches (flash-emacs--search-pattern pattern))
-              
-              ;; Check for zero matches and exit automatically
-              (when (and (> (length pattern) 0) (= (length matches) 0))
-                ;; (message "No matches found for '%s'" pattern)
-                (throw 'flash-exit nil))
-
-              ;; Auto-jump if exactly one match and option is enabled
-              (when (and flash-emacs-auto-jump-single
-                         (= (length matches) 1))
-                (flash-emacs--jump-to-match (car matches))
-                (throw 'flash-exit nil))
-
-              (let ((windows (if flash-emacs-multi-window
-                               (window-list)
-                             (list (selected-window))))
-                    (current-window (selected-window)))
-                (setq labeled-matches (flash-emacs--assign-labels matches flash-emacs-labels (point) pattern windows current-window)))
-              (flash-emacs--show-overlays matches labeled-matches))))
+  ;; Suppress all messages during flash operation to prevent "mark set" and other unwanted messages
+  (let ((original-message (symbol-function 'message)))
+    (cl-letf (((symbol-function 'message) 
+               (lambda (format-string &rest args)
+                 ;; Only allow specific flash-related messages
+                 (when (and format-string 
+                           (string-match-p "\\(Flash\\|cancelled\\)" format-string))
+                   (apply original-message format-string args)))))
       
-      ;; Cleanup
-      (flash-emacs--clear-overlays))))
+      (let ((pattern "")
+            (matches '())
+            (labeled-matches '()))
+        
+        (unwind-protect
+            (catch 'flash-exit
+              (while t
+                ;; Get input
+                (let* ((prompt (if (> (length pattern) 0)
+                                   (concat "Flash:" pattern)
+                                 "Flash:"))
+                       (char (read-char-exclusive prompt)))
+                  
+                  (cond
+                   ;; ESC or C-g - exit
+                   ((or (= char 27) (= char 7))
+                    (funcall original-message "Flash cancelled")
+                    (throw 'flash-exit nil))
+                   
+                   ;; Enter - jump to first match
+                   ((= char 13)
+                    (when (car labeled-matches)
+                      (flash-emacs--jump-to-match (car labeled-matches)))
+                    (throw 'flash-exit nil))
+                   
+                   ;; Backspace - remove last character
+                   ((or (= char 127) (= char 8))
+                    (if (> (length pattern) 0)
+                        (setq pattern (substring pattern 0 -1))
+                      (throw 'flash-exit nil)))
+                   
+                   ;; Check if it's a jump label
+                   ((and (>= char 32) (<= char 126))  ; Printable ASCII
+                    (let* ((new-char (char-to-string char))
+                           (target-match (flash-emacs--find-match-by-label new-char labeled-matches)))
+                      (if target-match
+                          ;; It's a jump label - perform the jump
+                          (progn
+                            (flash-emacs--jump-to-match target-match)
+                            (throw 'flash-exit nil))
+                        ;; It's a regular character - add to search pattern
+                        (setq pattern (concat pattern new-char)))))
+                   
+                   ;; Unknown character - ignore
+                   (t nil))
+                  
+                  ;; Update search results
+                  (setq matches (flash-emacs--search-pattern pattern))
+                  
+                  ;; Check for zero matches and exit automatically
+                  (when (and (> (length pattern) 0) (= (length matches) 0))
+                    ;; Don't show "no matches" message during interactive search
+                    (throw 'flash-exit nil))
+
+                  ;; Auto-jump if exactly one match and option is enabled
+                  (when (and flash-emacs-auto-jump-single
+                             (= (length matches) 1))
+                    (flash-emacs--jump-to-match (car matches))
+                    (throw 'flash-exit nil))
+
+                  (let ((windows (if flash-emacs-multi-window
+                                     (window-list)
+                                   (list (selected-window))))
+                        (current-window (selected-window)))
+                    (setq labeled-matches (flash-emacs--assign-labels matches flash-emacs-labels (point) pattern windows current-window)))
+                  (flash-emacs--show-overlays matches labeled-matches))))
+          
+          ;; Cleanup
+          (flash-emacs--clear-overlays))))))
 
 (provide 'flash-emacs)
 
